@@ -6,7 +6,7 @@ export type StoryTab = "home" | "memories" | "create" | "pet";
 
 export function storyTabHrefs(
   petId: string | null,
-  _signedIn = false,
+  signedIn = false,
   lifeStatus: LifeStatus | null = null,
 ) {
   const status = lifeStatus ?? "unspecified";
@@ -20,8 +20,14 @@ export function storyTabHrefs(
         ? `/dashboard/memorial${petQuery}`
         : status === "living"
           ? `/dashboard/living${petQuery}`
-          : "/dashboard/living",
-    memories: memoriesHref(petId),
+          : signedIn
+            ? "/dashboard"
+            : "/choose",
+    memories: signedIn
+      ? petId
+        ? `/my/pets/${encodeURIComponent(petId)}/memories#album`
+        : "/my/pets"
+      : memoriesHref(petId),
     create: createQuery.size ? `/create?${createQuery.toString()}` : "/create",
     pet: "/my/pets",
   };

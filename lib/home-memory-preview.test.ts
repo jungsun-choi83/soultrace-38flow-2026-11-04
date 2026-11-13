@@ -51,25 +51,37 @@ test("home preview dates are formatted for the locale instead of rendered as raw
   assert.notEqual(formatted, "2021-08-07");
 });
 
-test("Living and Memorial Home link to the pet-scoped album and no longer build monthly lists from recent records", () => {
+test("Living and Memorial Home keep a per-pet recent-memories preview that opens the month album", () => {
   const living = readFileSync("components/living-home.tsx", "utf8");
   const memorial = readFileSync("components/memorial-home.tsx", "utf8");
   const data = readFileSync("lib/pet-first-archive-data.ts", "utf8");
   for (const source of [living, memorial]) {
     assert.match(source, /recentMemoriesForPet\(recent, petId\)/);
-    assert.match(source, /\/my\/pets\/\$\{encodeURIComponent\(petId\)\}\/memories#album/);
     assert.match(source, /<HomeRecentMemories/);
-    assert.doesNotMatch(source, /groupMonths|item\.title \|\| item\.happenedOn \|\| item\.petName/);
+    // The redesigned homes open the Year -> Month album instead of the old
+    // pet-scoped "#album" anchor, and gate it behind sign-in for visitors.
+    assert.match(source, /memoriesMonthHref\(petId\)/);
+    assert.match(source, /signedIn \? memoriesMonthHref\(petId\) : authEntryPath\(memoriesMonthHref\(petId\)\)/);
+    assert.doesNotMatch(source, /item\.title \|\| item\.happenedOn \|\| item\.petName/);
   }
-  assert.match(data, /takeRecentRowsPerPet\(entries, \(entry\) => entry\.pet_id, 6\)/);
+  assert.match(data, /takeRecentRowsPerPet\(prioritizedEntries, \(entry\) => entry\.pet_id, 6\)/);
   assert.doesNotMatch(data, /entries\.slice\(0, 6\)/);
 });
 
-test("Home photo-import shortcuts open the selected pet's Record flow", () => {
+test("the dedicated Record flow stays reachable from pet creation and the pet profile", () => {
+  const home = readFileSync("components/pet-first-home.tsx", "utf8");
+  const profile = readFileSync("components/pet-first-profile.tsx", "utf8");
+  for (const source of [home, profile]) {
+    assert.match(source, /\/my\/pets\/\$\{encodeURIComponent\((?:created\.petId|active\.petId|petId)\)\}\/memories\/record/);
+  }
+});
+
+test("Home journey shortcuts open the pet-scoped memory album, never the removed import route", () => {
   const living = readFileSync("components/living-home.tsx", "utf8");
   const memorial = readFileSync("components/memorial-home.tsx", "utf8");
   for (const source of [living, memorial]) {
-    assert.match(source, /\/my\/pets\/\$\{encodeURIComponent\(petId\)\}\/memories\/record/);
+    assert.match(source, /`\/memories\?pet=\$\{encodeURIComponent\(petId\)\}`/);
+    assert.match(source, /signedIn \? importDestination : authEntryPath\(importDestination\)/);
     assert.doesNotMatch(source, /\/memories\/import\?pet=/);
   }
 });

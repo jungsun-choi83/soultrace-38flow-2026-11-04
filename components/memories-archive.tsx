@@ -2,6 +2,7 @@
 
 import { useLocale } from "@/components/locale-provider";
 import { StoryTabbar } from "@/components/storybook/story-tabbar";
+import { authEntryPath } from "@/lib/auth-redirect";
 import { entryHomePath } from "@/lib/entry-branch";
 import {
   beamSceneHref,
@@ -105,6 +106,7 @@ export function MemoriesArchive({
   const currentMonth = seoulToday().slice(0, 7);
   const folders = withCurrentMonth(groups, currentMonth);
   const openKey = folderView && month && /^\d{4}-\d{2}$/.test(month) ? month : null;
+  const folderSignInHref = access === "guest" ? authEntryPath(memoriesMonthHref(selectedPetId, openKey), "signin") : null;
   const homeHref = entryHomePath(pet?.lifeStatus === "memorial" ? "memorial" : "living", pet?.petId ?? null);
   const folderLang = lang === "en" ? "en" : "ko";
 
@@ -177,6 +179,7 @@ export function MemoriesArchive({
             loading={loading}
             pets={pets}
             selectedPetId={pet?.petId ?? null}
+            signInHref={folderSignInHref}
             onOpen={setSelected}
           />
         ) : null}
@@ -204,7 +207,7 @@ export function MemoriesArchive({
           </ul>
         ) : null}
 
-        {!folderView && access === "guest" ? <GuestImport preview={localPreview} onPick={setLocalPreview} /> : null}
+        {!folderView && access === "guest" ? <GuestImport preview={localPreview} petId={selectedPetId} onPick={setLocalPreview} /> : null}
         {!folderView && access === "unavailable" ? (
           <p className="st-card mt-5 px-4 py-4 text-sm leading-6 text-[#6b5846]">이 환경에서는 계정 저장이 아직 준비되지 않았어요. 사진은 서버에 올리지 않아요.</p>
         ) : null}
@@ -283,8 +286,8 @@ export function MemoriesArchive({
             <img src={selected.url} alt={selected.item.title || pet.petName} className="aspect-square w-full rounded-[16px] object-contain bg-[#f8f2e5]" />
             <p className="mt-3 text-sm text-[#6b5846]">{selected.item.happenedOn || selected.item.createdAt.slice(0, 10)}{selected.item.favorite ? " · 즐겨찾기" : ""}</p>
             <div className="mt-3 grid gap-2">
-              <button type="button" onClick={() => void toggleFavorite(selected)} className="st-btn st-btn-quiet w-full">즐겨찾기</button>
-              <Link href={polaroidHrefFromArchive(pet.petId)} className="st-btn st-btn-forest w-full">폴라로이드 만들기</Link>
+              {selected.item.deletable ? <button type="button" onClick={() => void toggleFavorite(selected)} className="st-btn st-btn-quiet w-full">{selected.item.favorite ? "즐겨찾기 해제" : "즐겨찾기"}</button> : null}
+              <Link href={polaroidHrefFromArchive(pet.petId, selected.item.entryId, selected.assetId)} className="st-btn st-btn-forest w-full">폴라로이드 만들기</Link>
               <Link href={beamSceneHref(pet.petId, selected.item.entryId, selected.assetId)} className="st-btn st-btn-quiet w-full">Beam 장면 미리보기</Link>
               {selected.item.deletable ? <button type="button" onClick={() => void remove(selected)} className="st-btn st-btn-quiet w-full">삭제</button> : null}
               <button type="button" onClick={() => setSelected(null)} className="min-h-11 text-sm text-[#6b5846]">닫기</button>
@@ -299,9 +302,11 @@ export function MemoriesArchive({
 
 function GuestImport({
   preview,
+  petId,
   onPick,
 }: {
   preview: string | null;
+  petId: string | null;
   onPick: (url: string | null) => void;
 }) {
   return (
@@ -327,7 +332,7 @@ function GuestImport({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={preview} alt="" className="aspect-square w-full rounded-[16px] object-contain bg-[#f8f2e5]" />
       ) : null}
-      <Link href="/dashboard/living" className="st-btn st-btn-quiet w-full">홈으로</Link>
+      <Link href={authEntryPath(memoriesHref(petId), "signin")} className="st-btn st-btn-quiet w-full">로그인하고 기록에 저장</Link>
     </section>
   );
 }
@@ -346,6 +351,8 @@ const FOLDER_COPY = {
     emptyFolder: "아직 담긴 사진이 없어요",
     emptyOpen: "사진을 가져오면 촬영일에 맞춰 이 폴더로 들어와요.",
     importLabel: "사진 가져오기",
+    signInBody: "기록에 담은 월별 사진은 로그인 후에 보여요.",
+    signIn: "로그인하고 추억 보기",
     count: (count: number) => `${count}장의 사진`,
   },
   en: {
@@ -355,6 +362,8 @@ const FOLDER_COPY = {
     emptyFolder: "No photos in this folder yet",
     emptyOpen: "Imported photos land here by the day they were taken.",
     importLabel: "Bring in photos",
+    signInBody: "Sign in to see the photos saved in each month's folder.",
+    signIn: "Sign in to view memories",
     count: (count: number) => (count === 1 ? "1 photo" : `${count} photos`),
   },
 } as const;
@@ -370,6 +379,7 @@ function MonthFolders({
   loading,
   pets,
   selectedPetId,
+  signInHref,
   onOpen,
 }: {
   lang: "ko" | "en";
@@ -382,6 +392,7 @@ function MonthFolders({
   loading: boolean;
   pets: MemoriesPet[];
   selectedPetId: string | null;
+  signInHref: string | null;
   onOpen: (photo: PhotoHit) => void;
 }) {
   const copy = FOLDER_COPY[lang];
@@ -403,8 +414,10 @@ function MonthFolders({
         </div>
         {openPhotos.length === 0 ? (
           <div className="grid gap-3 pt-2">
-            <p className="text-sm leading-6 text-[#6b5846]">{copy.emptyOpen}</p>
-            <Link href={memoriesHref(petId)} className="st-btn st-btn-forest w-full">{copy.importLabel}</Link>
+            <p className="text-sm leading-6 text-[#6b5846]">{signInHref ? copy.signInBody : copy.emptyOpen}</p>
+            <Link href={signInHref ?? memoriesHref(petId)} className="st-btn st-btn-forest w-full">
+              {signInHref ? copy.signIn : copy.importLabel}
+            </Link>
           </div>
         ) : (
           <div className="grid gap-5">
@@ -475,6 +488,12 @@ function MonthFolders({
           })}
         </ul>
       )}
+      {signInHref ? (
+        <div className="mt-6 grid gap-3">
+          <p className="text-sm leading-6 text-[#6b5846]">{copy.signInBody}</p>
+          <Link href={signInHref} className="st-btn st-btn-forest w-full">{copy.signIn}</Link>
+        </div>
+      ) : null}
     </section>
   );
 }

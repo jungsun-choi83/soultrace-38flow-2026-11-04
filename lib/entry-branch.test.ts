@@ -77,6 +77,7 @@ test("the two homes stay separate from the letter pages", () => {
   assert.match(living, /이번 달의 추억/);
   assert.match(living, /우리의 특별한 추억/);
   assert.match(living, /우리아이의 목걸이/);
+  assert.match(living, /HomeRecentMemories/);
   assert.match(living, /\/create\?/);
   assert.match(memorial, /추모관 들어가기/);
   assert.match(memorial, /memorial-space/);
