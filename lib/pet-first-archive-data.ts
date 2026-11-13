@@ -1,6 +1,7 @@
 import "server-only";
 
-import { GUEST_PREVIEW_PET_ID, isMissingRelationError, type LifeStatus } from "@/lib/pet-first-archive";
+import { GUEST_PREVIEW_PET_ID, isMissingRelationError, seoulToday, type LifeStatus } from "@/lib/pet-first-archive";
+import { takeRecentRowsPerPet } from "@/lib/home-memory-preview";
 import type { createSupabaseAuthServerClient } from "@/lib/supabase-auth-server";
 
 let timelineRelationMissing = false;
@@ -106,13 +107,22 @@ export async function loadPetHome(supabase: AuthClient, userId: string) {
       .order("created_at", { ascending: false })
       .limit(400)
     : entriesResult;
+
   noteTimelineAvailability(entriesResultResolved.error?.code);
+
+  if (lettersResult.error) {
+    console.error("[pet-first] letters unavailable", { code: lettersResult.error.code });
+    return null;
+  }
+
   if (entriesResultResolved.error && !isMissingRelationError(entriesResultResolved.error.code)) {
     console.error("[pet-first] timeline unavailable", { code: entriesResultResolved.error.code });
+    return null;
   }
 
   const entries = (entriesResultResolved.error ? [] : entriesResultResolved.data ?? []) as EntryRow[];
-  const letters = lettersResult.error ? [] : lettersResult.data ?? [];
+  const letters = lettersResult.data ?? [];
+
   const pets: HomePet[] = await Promise.all((petsResult.data ?? []).map(async (pet) => {
     const image = entries
       .filter((entry) => entry.pet_id === pet.pet_id)
@@ -138,17 +148,26 @@ export async function loadPetHome(supabase: AuthClient, userId: string) {
   }));
   const names = new Map(pets.map((pet) => [pet.petId, pet.petName]));
 
-  const monthKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+  const monthKey = seoulToday().slice(0, 7);
+
   const coverIds = new Set(pets.flatMap((pet) => {
-    const shots = entries.filter((entry) => entry.pet_id === pet.petId && entry.kind === "photo" && (entry.happened_on ?? entry.created_at).slice(0, 7) === monthKey && (entry.pet_timeline_assets ?? []).some((asset) => asset.content_type.startsWith("image/")));
+    const shots = entries.filter((entry) =>
+      entry.pet_id === pet.petId &&
+      entry.kind === "photo" &&
+      (entry.happened_on ?? entry.created_at).slice(0, 7) === monthKey &&
+      (entry.pet_timeline_assets ?? []).some((asset) => asset.content_type.startsWith("image/"))
+    );
     const best = shots.find((entry) => entry.favorite) ?? shots[0];
     return best ? [best.entry_id] : [];
   }));
-  const shown = [
+
+  const prioritizedEntries = [
     ...entries.filter((entry) => coverIds.has(entry.entry_id)),
-    ...entries.filter((entry) => !coverIds.has(entry.entry_id)).slice(0, 6),
+    ...entries.filter((entry) => !coverIds.has(entry.entry_id)),
   ];
-  const recent: HomeRecent[] = await Promise.all(shown.map(async (entry) => {
+
+  const recentEntries = takeRecentRowsPerPet(prioritizedEntries, (entry) => entry.pet_id, 6);
+  const recent: HomeRecent[] = await Promise.all(recentEntries.map(async (entry) => {
     const image = [...(entry.pet_timeline_assets ?? [])]
       .sort((a, b) => a.asset_order - b.asset_order)
       .find((asset) => asset.content_type.startsWith("image/"));

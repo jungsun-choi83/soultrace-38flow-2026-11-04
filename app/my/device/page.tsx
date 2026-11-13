@@ -33,7 +33,8 @@ export default async function DevicePage({
   const supabase = await createSupabaseAuthServerClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!supabase || !user) {
-    return <CollarStudioRoute step="hub" pet={petId ? { petId, petName: "우리 아이" } : null} />;
+    const previewPetId = petId && isUuid(petId) ? petId : null;
+    return <CollarStudioRoute step="hub" pet={previewPetId ? { petId: previewPetId, petName: "우리 아이" } : null} />;
   }
 
   if (!petId || !isUuid(petId)) {

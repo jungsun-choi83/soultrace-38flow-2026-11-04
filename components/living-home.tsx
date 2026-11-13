@@ -5,6 +5,9 @@ import { FreePolaroidNotice } from "@/components/free-polaroid-notice";
 import { useLocale } from "@/components/locale-provider";
 import { StoryBrandHeader } from "@/components/storybook/story-chrome";
 import { StoryTabbar } from "@/components/storybook/story-tabbar";
+import { HomeRecentMemories } from "@/components/home-recent-memories";
+import { authEntryPath } from "@/lib/auth-redirect";
+import { recentMemoriesForPet } from "@/lib/home-memory-preview";
 import {
   entryHomePath,
   petsOnBranch,
@@ -75,15 +78,18 @@ export function LivingHome({
   selectedPetId?: string | null;
 }) {
   const { lang } = useLocale();
-  const copy = COPY[lang === "en" ? "en" : "ko"];
+  const langKey = lang === "en" ? "en" : "ko";
+  const copy = COPY[langKey];
   const tabs = petFirstCopy(lang);
   const here = petsOnBranch(pets, "living", selectedPetId);
   const elsewhere = petsOnOtherBranch(pets, "living");
   const waiting = pets.filter((pet) => pet.lifeStatus === "unspecified" && pet.petId !== selectedPetId);
   const selected = here.find((pet) => pet.petId === selectedPetId) ?? here.find((pet) => pet.lifeStatus === "living") ?? null;
   const petId = selected?.petId ?? null;
-  const importHref = petId ? `/memories?pet=${encodeURIComponent(petId)}` : "/memories";
-  const monthlyHref = memoriesMonthHref(petId);
+  const memories = recentMemoriesForPet(recent, petId);
+  const importDestination = petId ? `/memories?pet=${encodeURIComponent(petId)}` : "/memories";
+  const importHref = signedIn ? importDestination : authEntryPath(importDestination);
+  const monthlyHref = signedIn ? memoriesMonthHref(petId) : authEntryPath(memoriesMonthHref(petId));
   const createHref = petId ? `/create?pet=${encodeURIComponent(petId)}&branch=living` : "/create?branch=living";
   const today = seoulToday();
   const monthKey = today.slice(0, 7);
@@ -94,7 +100,7 @@ export function LivingHome({
   return (
     <div data-testid="living-home" className={`st-paper st-grain st-body flex min-h-[100svh] flex-col overflow-x-clip ${lang === "ko" ? "break-keep" : ""}`}>
       <main className="mx-auto w-full max-w-xl flex-1 px-5 pb-8 pt-4">
-        <StoryBrandHeader homeHref={entryHomePath("living", petId)} settingsHref="/settings" settingsLabel={tabs.settingsTitle} />
+        <StoryBrandHeader homeHref={entryHomePath("living", petId)} settingsHref={signedIn ? "/settings" : authEntryPath("/dashboard/living")} settingsLabel={tabs.settingsTitle} />
         <section className="mt-4 overflow-hidden rounded-[22px] bg-[#f8f2e5] px-4 pb-5 pt-4">
           <h1 className="st-headline text-[clamp(1.25rem,5.4vw,1.55rem)] leading-snug !tracking-[-0.03em] text-[#3a452f]">{copy.title}</h1>
           <div className="mt-6 text-center">
@@ -141,7 +147,7 @@ export function LivingHome({
             <img src={monthPhoto ?? seasonPose(monthNumber)} alt="" className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
             <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#f6dcc4] via-[#f6dcc4]/80 to-transparent px-3 pb-3 pt-10 text-right">
               <span className="block text-sm font-medium text-[#7a5b45]">{copy.monthTitle}</span>
-              <span className="mt-0.5 block text-[2rem] font-semibold leading-none tracking-[-0.04em]">{monthNumber}월</span>
+              <span className="mt-0.5 block text-[2rem] font-semibold leading-none tracking-[-0.04em]">{monthLabel(monthNumber, langKey)}</span>
               {monthPhoto ? <span className="mt-1 block text-xs text-[#7a5b45]">{copy.cover}</span> : null}
             </span>
           </Link>
@@ -173,6 +179,16 @@ export function LivingHome({
             />
           </CollarProvider>
         </div>
+        {signedIn && petId ? (
+          <HomeRecentMemories
+            items={memories}
+            href={monthlyHref}
+            lang={lang === "en" ? "en" : "ko"}
+            title={lang === "en" ? "Recent memories" : "최근 추억"}
+            empty={lang === "en" ? "No memories for this pet yet." : "아직 남긴 추억이 없어요."}
+            viewAll={lang === "en" ? "View album" : "앨범 모두 보기"}
+          />
+        ) : null}
       </main>
       <StoryTabbar current="home" {...storyTabProps(tabs, petId, signedIn, "living")} />
     </div>
@@ -249,6 +265,11 @@ function monthCover(recent: HomeRecent[], petId: string | null, monthKey: string
   return (shots.find((item) => item.favorite) ?? shots[0])?.imageUrl ?? null;
 }
 
+function monthLabel(month: number, lang: "ko" | "en") {
+  if (lang === "ko") return `${month}월`;
+  return new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2000, month - 1, 1)));
+}
+
 function seasonPose(month: number) {
   if (month >= 3 && month <= 5) return POSE_ART.shibaSpring;
   if (month >= 9 && month <= 11) return POSE_ART.shibaAutumn;
@@ -323,4 +344,3 @@ function PetSwitch({
     </div>
   );
 }
-

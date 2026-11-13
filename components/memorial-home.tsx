@@ -3,6 +3,9 @@
 import { useLocale } from "@/components/locale-provider";
 import { StoryBrandHeader } from "@/components/storybook/story-chrome";
 import { StoryTabbar } from "@/components/storybook/story-tabbar";
+import { HomeRecentMemories } from "@/components/home-recent-memories";
+import { recentMemoriesForPet } from "@/lib/home-memory-preview";
+import { authEntryPath } from "@/lib/auth-redirect";
 import { POSE_ART } from "@/lib/pose-art";
 import {
   entryHomePath,
@@ -70,15 +73,18 @@ export function MemorialHome({
   const visibleIds = new Set(here.map((pet) => pet.petId));
   const memories = recent.filter((item) => visibleIds.has(item.petId));
   const months = groupMonths(memories);
-  const importHref = petId ? `/memories?pet=${encodeURIComponent(petId)}` : "/memories";
-  const monthlyHref = memoriesMonthHref(petId);
+  const recentMemories = recentMemoriesForPet(recent, petId);
+  const importDestination = petId ? `/memories?pet=${encodeURIComponent(petId)}` : "/memories";
+  const importHref = signedIn ? importDestination : authEntryPath(importDestination);
+  const monthlyHref = signedIn ? memoriesMonthHref(petId) : authEntryPath(memoriesMonthHref(petId));
   const createHref = petId ? `/create?pet=${encodeURIComponent(petId)}&branch=memorial` : "/create?branch=memorial";
-  const hallHref = petId ? memorialSpaceHref(petId) : "/memorial-space";
+  const hallDestination = petId ? memorialSpaceHref(petId) : "/memorial-space";
+  const hallHref = signedIn ? hallDestination : authEntryPath(hallDestination);
 
   return (
     <div data-testid="memorial-home" className={`st-paper st-grain st-body flex min-h-[100svh] flex-col overflow-x-clip ${lang === "ko" ? "break-keep" : ""}`}>
       <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-8 pt-4">
-        <StoryBrandHeader homeHref={entryHomePath("memorial", petId)} settingsHref="/settings" settingsLabel={tabs.settingsTitle} />
+        <StoryBrandHeader homeHref={entryHomePath("memorial", petId)} settingsHref={signedIn ? "/settings" : authEntryPath("/dashboard/memorial")} settingsLabel={tabs.settingsTitle} />
         <section className="mt-4 overflow-hidden rounded-[22px] bg-[#efe6d6]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={POSE_ART.shibaAutumn} alt="" className="aspect-[4/3] w-full bg-[#efe6d6] object-contain object-center" />
@@ -148,6 +154,16 @@ export function MemorialHome({
           </ul>
         </section>
 
+        {signedIn && petId ? (
+          <HomeRecentMemories
+            items={recentMemories}
+            href={monthlyHref}
+            lang={lang === "en" ? "en" : "ko"}
+            title={lang === "en" ? "Recent memories together" : "최근 함께한 추억"}
+            empty={lang === "en" ? "No memories for this pet yet." : "아직 남긴 추억이 없어요."}
+            viewAll={lang === "en" ? "View album" : "앨범 모두 보기"}
+          />
+        ) : null}
       </main>
       <StoryTabbar current="home" {...storyTabProps(tabs, petId, signedIn, "memorial")} />
     </div>
