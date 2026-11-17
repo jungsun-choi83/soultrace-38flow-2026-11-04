@@ -29,6 +29,14 @@ type Mocks = {
   imageBase64: string | null;
   memoCalls: Array<{ image?: { base64: string; mimeType: string } }>;
   memoLines: string[] | null;
+  memoLocale: "en" | "ko";
+  memoFallback: boolean;
+  memoModelUsed: string | null;
+  memoAttempts: number;
+  memoFirstAttemptValid: boolean;
+  memoFailureCodes: string[];
+  memoRepairCodes: string[];
+  memoFailureDetails: Array<Record<string, unknown>>;
   completions: Array<Record<string, unknown>>;
   completeOk: boolean;
   finalized: number;
@@ -36,7 +44,9 @@ type Mocks = {
 };
 const mocks: Mocks = {
   jobs: [], claims: 0, requeues: [], jobStatus: "queued", storedImage: null, downloads: 0, inputDownloads: [], uploads: 0,
-  imageCalls: 0, imageBase64: null, memoCalls: [], memoLines: null, completions: [], completeOk: true,
+  imageCalls: 0, imageBase64: null, memoCalls: [], memoLines: null, memoLocale: "en", completions: [], completeOk: true,
+  memoFallback: false, memoModelUsed: "gpt-4o-mini", memoAttempts: 1, memoFirstAttemptValid: true,
+  memoFailureCodes: [], memoRepairCodes: [], memoFailureDetails: [],
   finalized: 0, released: 0,
 };
 (globalThis as Record<string, unknown>).__seasonalWorkerMocks = mocks;
@@ -63,7 +73,7 @@ const stubs: Record<string, string> = {
     }
     export async function generateSeasonalPolaroidMemo({ image }) {
       ${M}.memoCalls.push({ image });
-      return { memo: { locale: "en", lines: ${M}.memoLines }, modelUsed: "gpt-4o-mini", retried: false, fallback: false, vision: Boolean(image), attempts: 1, firstAttemptValid: true, failureCodes: [], usage: null };
+      return { memo: { locale: ${M}.memoLocale, lines: ${M}.memoLines }, modelUsed: ${M}.memoModelUsed, retried: ${M}.memoAttempts > 1, fallback: ${M}.memoFallback, vision: Boolean(image), attempts: ${M}.memoAttempts, firstAttemptValid: ${M}.memoFirstAttemptValid, failureCodes: ${M}.memoFailureCodes, repairCodes: ${M}.memoRepairCodes, failureDetails: ${M}.memoFailureDetails, usage: null };
     }
   `),
   "@/lib/seasonal-polaroid-admission": dataModule(`export function parseSeasonalPolaroidQueuePayload(value) { return value; }`),
@@ -154,7 +164,9 @@ function job(answers: SeasonalPolaroidPromptAnswers = ANSWERS) {
 function reset(overrides: Partial<Mocks> = {}) {
   Object.assign(mocks, {
     jobs: [job()], claims: 0, requeues: [], jobStatus: "queued", storedImage: null, downloads: 0, inputDownloads: [], uploads: 0,
-    imageCalls: 0, imageBase64: Buffer.from(GENERATED_IMAGE).toString("base64"), memoCalls: [],
+    imageCalls: 0, imageBase64: Buffer.from(GENERATED_IMAGE).toString("base64"), memoCalls: [], memoLocale: "en",
+    memoFallback: false, memoModelUsed: "gpt-4o-mini", memoAttempts: 1, memoFirstAttemptValid: true,
+    memoFailureCodes: [], memoRepairCodes: [], memoFailureDetails: [],
     memoLines: fallbackSeasonalPolaroidMemo(ANSWERS).lines, completions: [], completeOk: true, finalized: 0, released: 0,
   }, overrides);
 }
@@ -192,6 +204,59 @@ test("fresh job: image generated once, stored, then captioned from that exact im
   assert.deepEqual(mocks.requeues, []);
 });
 
+test("worker persists a validated Korean birthday fallback and safe failure diagnostics", async () => {
+  const answers: SeasonalPolaroidPromptAnswers = {
+    ...ANSWERS,
+    themeId: "crayon-diary",
+    occasionId: "birthday-star",
+    locale: "ko",
+    petName: "bibo",
+    species: "dog",
+    status: "living",
+    costume: "surprise",
+    scene: "diary-page",
+    vibe: "handmade-warm",
+    personalities: ["zoomies"],
+    habit: "whole-body-wiggle",
+    favoriteTreat: "pumpkin-biscuit",
+    callName: "both",
+  };
+  const memo = fallbackSeasonalPolaroidMemo(answers);
+  const failureDetails = ["memo_missing_pet_name", "memo_missing_pet_name"].map(() => ({
+    stage: "validation",
+    category: "unknown",
+    status: null,
+    code: null,
+    param: null,
+    errorClass: "Error",
+    validationReason: "memo_missing_pet_name",
+  }));
+  reset({
+    jobs: [job(answers)],
+    memoLines: memo.lines,
+    memoLocale: "ko",
+    memoFallback: true,
+    memoModelUsed: null,
+    memoAttempts: 2,
+    memoFirstAttemptValid: false,
+    memoFailureCodes: ["memo_missing_pet_name", "memo_missing_pet_name"],
+    memoFailureDetails: failureDetails,
+  });
+
+  const summary = await runWorker();
+  assert.deepEqual(summary, { claimed: 1, completed: 1, rounds: 2 });
+  assert.equal(mocks.completions.length, 1);
+  const result = mocks.completions[0] as { memo: { lines: string[]; locale: string }; generation: Record<string, unknown> };
+  assert.deepEqual(result.memo.lines, memo.lines);
+  assert.equal(result.memo.locale, "ko");
+  assert.equal(result.generation.memoFallback, true);
+  assert.equal(result.generation.textModel, null);
+  assert.deepEqual(result.generation.memoFailureCodes, ["memo_missing_pet_name", "memo_missing_pet_name"]);
+  assert.deepEqual(result.generation.memoFailureDetails, failureDetails);
+  assert.doesNotMatch(result.memo.lines.join(" "), /오늘은 작은 축하처럼 따뜻해|오늘은 흔들고|온몸을 흔들고[,，]/u);
+  assert.deepEqual(mocks.requeues, []);
+});
+
 test("worker completion preserves the validated Christmas occasion separately from the frame", async () => {
   const christmasAnswers: SeasonalPolaroidPromptAnswers = {
     ...ANSWERS,
@@ -201,7 +266,7 @@ test("worker completion preserves the validated Christmas occasion separately fr
     scene: "candle-window",
     vibe: "christmas-cozy",
   };
-  reset({ jobs: [job(christmasAnswers)] });
+  reset({ jobs: [job(christmasAnswers)], memoLines: fallbackSeasonalPolaroidMemo(christmasAnswers).lines });
   await runWorker();
   const result = mocks.completions[0] as { themeId: string; generation: Record<string, unknown> };
   assert.equal(result.themeId, "felt-doll", "themeId remains the decorative frame selection");

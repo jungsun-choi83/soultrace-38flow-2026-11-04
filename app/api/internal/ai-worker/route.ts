@@ -270,6 +270,8 @@ async function processSeasonalPolaroidJob(job: AiGenerationJob): Promise<void> {
       memoAttempts: memoResult.attempts,
       memoFirstAttemptValid: memoResult.firstAttemptValid,
       memoFailureCodes: memoResult.failureCodes,
+      memoRepairCodes: memoResult.repairCodes,
+      memoFailureDetails: memoResult.failureDetails,
     },
     // Gallery persistence is completed atomically by the Seasonal completion
     // RPC; save/download proof remains separate from the existing Letter and
