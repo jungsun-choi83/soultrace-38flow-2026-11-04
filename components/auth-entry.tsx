@@ -1,7 +1,6 @@
 "use client";
 
 import { useLocale } from "@/components/locale-provider";
-import { EternalBeamLogo } from "@/components/storybook/eternal-beam-logo";
 import { PaperShell } from "@/components/storybook/paper-shell";
 import { UIUX_AUTH_ART } from "@/lib/uiux-art";
 import Image from "next/image";
@@ -234,11 +233,6 @@ export function AuthEntry({ returnTo, initialAuthError = null, passwordUpdated =
       <main className="mx-auto w-full max-w-[430px] flex-1 px-5 pb-8">
         <div className="relative mt-1 aspect-[16/9] overflow-hidden rounded-[22px] bg-[#f3e6cf]">
           <Image src={UIUX_AUTH_ART} alt="" fill sizes="430px" className="object-cover object-[center_12%]" priority />
-        </div>
-        <div className="mt-5 flex flex-col items-center text-center">
-          <EternalBeamLogo className="h-auto w-32" />
-          <p className="mt-2 font-display-en text-3xl tracking-[0.04em] text-[#3a452f]">SoulTrace</p>
-          <p className={`mt-2 text-sm text-[#7a6c5c] ${bodyFont}`}>{t("splash.tagline")}</p>
         </div>
         <h1 className={`st-headline mt-6 text-center text-[1.85rem] text-[#393129] ${lang === "ko" ? "break-keep" : "tracking-[0.01em]"}`}>
           {t(recoveryOpen ? "auth.recovery.requestTitle" : mode === "signup" ? "auth.signupTitle" : "auth.signinTitle")}
