@@ -70,7 +70,7 @@ const ANSWERS: SeasonalPolaroidPromptAnswers = {
   personalDetail: "Waits by the window.",
 };
 
-test("memo request sends the compact brief, not the full questionnaire, to the AI", () => {
+test("memo request sends the concise personal facts and occasion to the AI", () => {
   const messages = buildSeasonalPolaroidMemoMessages(ANSWERS);
   const userMessage = JSON.parse(messages[1]!.content) as { brief: Record<string, unknown> };
   assert.equal(messages[0]!.role, "system");
@@ -79,10 +79,50 @@ test("memo request sends the compact brief, not the full questionnaire, to the A
   assert.equal(userMessage.brief.ownerCallName, "Mom");
   assert.equal(userMessage.brief.personality, "a love of snacks");
   assert.equal(userMessage.brief.personalTouch, "Waits by the window.");
-  assert.deepEqual(userMessage.brief.background, { kind: "habit", text: "napping in every sunbeam" });
-  assert.equal("habit" in userMessage.brief, false, "non-focus habit must not reach the caption model");
-  assert.equal("favoriteTreat" in userMessage.brief, false);
+  assert.equal(userMessage.brief.occasion, "Halloween");
+  assert.equal(userMessage.brief.habit, "napping in every sunbeam");
+  assert.equal(userMessage.brief.favoriteTreat, "tuna");
   assert.equal("costume" in userMessage.brief, false);
+});
+
+test("Korean Latin-script pet names are repaired in the greeting and revalidated", async () => {
+  const answers: SeasonalPolaroidPromptAnswers = {
+    ...ANSWERS,
+    themeId: "crayon-diary",
+    occasionId: "birthday-star",
+    locale: "ko",
+    petName: "bibo",
+    species: "dog",
+    status: "living",
+    costume: "surprise",
+    scene: "diary-page",
+    vibe: "handmade-warm",
+    personalities: ["zoomies"],
+    habit: "whole-body-wiggle",
+    favoriteTreat: "pumpkin-biscuit",
+    callName: "both",
+  };
+  const modelLines = [
+    "엄마와 아빠, 나 비보야!",
+    "생일이라 온몸을 흔들어.",
+    "호박 비스킷도 참 좋아해.",
+    "엄마, 많이 사랑해!",
+  ];
+  const requests: unknown[] = [];
+  const result = await generateSeasonalPolaroidMemo({
+    openai: capturingOpenAi(JSON.stringify({ locale: "ko", lines: modelLines }), requests),
+    answers,
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(result.fallback, false);
+  assert.equal(result.modelUsed, "gpt-4o-mini");
+  assert.equal(result.attempts, 1);
+  assert.equal(result.firstAttemptValid, false, "repaired output is distinguished from an untouched valid answer");
+  assert.deepEqual(result.failureCodes, []);
+  assert.deepEqual(result.repairCodes, ["memo_korean_greeting"]);
+  assert.match(result.memo.lines[0], /엄마와 아빠, 나 bibo야!/u);
+  assert.equal(validateSeasonalPolaroidMemo(result.memo, answers).valid, true);
 });
 
 function capturingOpenAi(content: string, requests: unknown[]) {
@@ -100,7 +140,7 @@ function capturingOpenAi(content: string, requests: unknown[]) {
 
 const VALID_LINES = [
   "Mom, happy Halloween from Mochi!",
-  "I'm curled up by the window,",
+  "Halloween makes me grin so wide,",
   "and my pumpkin hat slipped over one ear",
   "while I wait for a bite of tuna.",
 ];
@@ -280,9 +320,9 @@ test("valid Korean structured memo reaches the AI path without fallback", async 
       locale: "ko",
       lines: [
         "엄마, 모찌가 해피 할로윈!",
-        "호박 옷 입고,",
-        "참치 간식이 제일 좋아요.",
-        "포근한 밤의 작은 순간이에요.",
+        "할로윈이라 들떠!",
+        "참치 간식이 제일 좋아.",
+        "엄마, 참 사랑해!",
       ],
     }), calls),
     answers,
@@ -293,6 +333,88 @@ test("valid Korean structured memo reaches the AI path without fallback", async 
   assert.equal(result.modelUsed, "gpt-4o-mini");
   assert.equal(result.memo.locale, "ko");
   assert.equal(result.memo.lines.length, 4);
+});
+
+test("Bibo's birthday caption retries when occasion context is missing", async () => {
+  const answers: SeasonalPolaroidPromptAnswers = {
+    ...ANSWERS,
+    themeId: "crayon-diary",
+    occasionId: "birthday-star",
+    locale: "ko",
+    petName: "bibo",
+    species: "dog",
+    costume: "surprise",
+    scene: "diary-page",
+    vibe: "handmade-warm",
+    personalities: ["zoomies"],
+    callName: "mom",
+    habit: "toy-carrier",
+    favoriteTreat: "cheese",
+  };
+  const requests: unknown[] = [];
+  const result = await generateSeasonalPolaroidMemo({
+    openai: mockedOpenAiSequence([
+      JSON.stringify({ locale: "ko", lines: ["엄마, 나 bibo야!", "장난감을 물고 다녀.", "치즈 간식이 제일 좋아.", "엄마, 사랑해요!"] }),
+      JSON.stringify({ locale: "ko", lines: ["엄마, 나 bibo야!", "생일이라 더 기뻐!", "장난감을 물고 다녀.", "엄마, 많이 사랑해!"] }),
+    ], { count: 0 }, requests),
+    answers,
+  });
+
+  assert.equal(result.fallback, false);
+  assert.equal(result.modelUsed, "gpt-4o-mini");
+  assert.equal(result.attempts, 2);
+  assert.deepEqual(result.failureCodes, ["memo_occasion_relevance"]);
+  assert.equal(result.memo.lines[0], "엄마, 나 bibo야!");
+  const retryPrompt = (requests[1] as { messages: Array<{ content: string }> }).messages[0]!.content;
+  assert.match(retryPrompt, /previous draft did not make the selected occasion/);
+  assert.match(retryPrompt, /Keep the greeting, owner, pet name, supplied pet facts/i);
+});
+
+test("Korean mixed speech levels trigger one targeted retry and preserve safe failure metadata", async () => {
+  const answers: SeasonalPolaroidPromptAnswers = {
+    ...ANSWERS,
+    themeId: "crayon-diary",
+    occasionId: "birthday-star",
+    locale: "ko",
+    petName: "bibo",
+    species: "dog",
+    costume: "surprise",
+    scene: "diary-page",
+    vibe: "handmade-warm",
+    personalities: ["zoomies"],
+    callName: "mom",
+    habit: "toy-carrier",
+    favoriteTreat: "cheese",
+  };
+  const requests: unknown[] = [];
+  const result = await generateSeasonalPolaroidMemo({
+    openai: mockedOpenAiSequence([
+      JSON.stringify({ locale: "ko", lines: ["엄마, 나 bibo야!", "생일이라 더 기뻐요!", "장난감을 물고 다녀.", "엄마, 사랑해요!"] }),
+      JSON.stringify({ locale: "ko", lines: ["엄마, 나 bibo야!", "생일이라 더 기뻐요!", "장난감을 물고 다녀요.", "엄마, 사랑해요!"] }),
+    ], { count: 0 }, requests),
+    answers,
+  });
+
+  assert.equal(result.fallback, false);
+  assert.equal(result.attempts, 2);
+  assert.deepEqual(result.failureCodes, ["memo_korean_speech_level"]);
+  assert.equal(result.memo.lines[2], "장난감을 물고 다녀요.");
+  const retryPrompt = (requests[1] as { messages: Array<{ content: string }> }).messages[0]!.content;
+  assert.match(retryPrompt, /mixed informal and polite sentence endings/);
+  assert.match(retryPrompt, /one consistent natural speech level/);
+
+  const exhausted = await generateSeasonalPolaroidMemo({
+    openai: mockedOpenAiSequence([
+      JSON.stringify({ locale: "ko", lines: ["엄마, 나 bibo야!", "장난감을 물고 다녀.", "치즈 간식이 제일 좋아.", "엄마, 사랑해요!"] }),
+      JSON.stringify({ locale: "ko", lines: ["엄마, 나 bibo야!", "생일이라 더 기뻐요!", "장난감을 물고 다녀.", "엄마, 사랑해요!"] }),
+    ], { count: 0 }),
+    answers,
+  });
+  assert.equal(exhausted.fallback, true);
+  assert.equal(exhausted.modelUsed, null);
+  assert.equal(exhausted.attempts, 2);
+  assert.deepEqual(exhausted.failureCodes, ["memo_occasion_relevance", "memo_korean_speech_level"]);
+  assert.equal(validateSeasonalPolaroidMemo(exhausted.memo, answers).valid, true);
 });
 
 test("memo retries an overlong response with an explicit compact rewrite instruction", async () => {

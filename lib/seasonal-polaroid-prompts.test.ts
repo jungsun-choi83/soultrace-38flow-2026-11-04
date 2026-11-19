@@ -80,12 +80,12 @@ test("fallback memos remain four lines, localized, and greeting-addressed", () =
   assert.equal(validateSeasonalPolaroidMemo(korean, PASSED).valid, true);
 });
 
-test("fallback memo keeps the pet's voice natural and first-person", () => {
+test("fallback memo keeps the pet's voice personal and owner-directed", () => {
   const english = fallbackSeasonalPolaroidMemo(LIVING);
   assert.match(english.lines[0], /Mom, happy Halloween from Mochi!/);
-  assert.match(english.lines[1], /^(?:I've got|I'm wearing|I feel)/);
+  assert.match(english.lines[1], /Halloween/);
   assert.match(english.lines.slice(1).join(" "), /\bI\b/);
-  assert.doesNotMatch(english.lines.slice(1).join(" "), /Mom/);
+  assert.match(english.lines[3], /I love you, Mom/);
   assert.doesNotMatch(english.lines.slice(1).join(" "), /Mochi|their/i);
   assert.doesNotMatch(english.lines.slice(1).join(" "), /I'm in|save me|I hope you smile|sending you|I'll always/i);
   assert.doesNotMatch(english.lines[2], /\.\./);
@@ -201,7 +201,7 @@ test("different answers produce different compact fallback details without stock
   });
   assert.notDeepEqual(pumpkin.lines, witch.lines);
   assert.match(witch.lines[0], /Tuli/);
-  assert.match(witch.lines.slice(1).join(" "), /witch|curious|box|churu/i);
+  assert.match(witch.lines.slice(1).join(" "), /box/i);
   assert.doesNotMatch(witch.lines.slice(1).join(" "), /I'm in|save me|I hope you smile/i);
   assert.equal(validateSeasonalPolaroidMemo(witch, { ...LIVING, petName: "Tuli", costume: "witch", personalities: ["curious-explorer"], habit: "box-inspector", favoriteTreat: "churu", generationNonce: "regen-c" }).valid, true);
 });
@@ -215,6 +215,23 @@ test("fallback memo keeps optional details inside the localized line budget", ()
   assert.equal(validateSeasonalPolaroidMemo(korean, { ...PASSED, personalDetail: "x".repeat(60) }).valid, true);
 });
 
+test("English birthday and Adoption Day fallbacks are affectionate, coherent keepsake notes", () => {
+  for (const occasionId of ["birthday-star", "adoption-day"]) {
+    const answers = { ...LIVING, occasionId };
+    const memo = fallbackSeasonalPolaroidMemo(answers);
+    assert.equal(validateSeasonalPolaroidMemo(memo, answers).valid, true);
+    assert.match(memo.lines[1], /^(?:I|I'm)/);
+    // Line 3 may start with "And I" or naturally include occasion context like "and today I'm"
+    assert.match(memo.lines[2], /^(?:And I|and (?:today|I))/);
+    assert.match(memo.lines[3], /I love you, Mom/);
+    assert.ok(memo.lines.slice(1).every((line) => line.length <= 40));
+  }
+  const memorialAnswers = { ...LIVING, status: "passed" as const, occasionId: "birthday-star" };
+  const memorial = fallbackSeasonalPolaroidMemo(memorialAnswers);
+  assert.equal(validateSeasonalPolaroidMemo(memorial, memorialAnswers).valid, true);
+  assert.match(memorial.lines[3], /I loved you, Mom/);
+});
+
 test("fallback captions stay compact for the decorative memo window", () => {
   const english = fallbackSeasonalPolaroidMemo(LIVING);
   const korean = fallbackSeasonalPolaroidMemo(PASSED);
@@ -224,12 +241,12 @@ test("fallback captions stay compact for the decorative memo window", () => {
   assert.equal(validateSeasonalPolaroidMemo(korean, PASSED).valid, true);
 });
 
-test("regeneration nonce varies fallback phrasing without changing supplied facts", () => {
+test("fallback remains coherent and deterministic across regeneration", () => {
   const first = fallbackSeasonalPolaroidMemo({ ...LIVING, generationNonce: "regen-a" });
   const second = fallbackSeasonalPolaroidMemo({ ...LIVING, generationNonce: "regen-b" });
   const koreanAnswers = { ...PASSED, generationNonce: "regen-a" };
   const korean = fallbackSeasonalPolaroidMemo(koreanAnswers);
-  assert.notDeepEqual(first.lines, second.lines);
+  assert.deepEqual(first.lines, second.lines);
   assert.match(first.lines[0], /Mochi/);
   assert.match(second.lines[0], /Mochi/);
   assert.equal(validateSeasonalPolaroidMemo(first, LIVING).valid, true);
@@ -251,13 +268,13 @@ test("memo validation enforces exact greeting and body boundaries in both langua
   const english = fallbackSeasonalPolaroidMemo(LIVING);
   const englishBodyAtLimit = {
     ...english,
-    lines: [english.lines[0], `and I ${"x".repeat(33)},`, english.lines[2], english.lines[3]],
+    lines: [english.lines[0], `I love Halloween ${"x".repeat(22)},`, english.lines[2], english.lines[3]],
   };
   assert.equal(englishBodyAtLimit.lines[1].length, 40);
   assert.equal(validateSeasonalPolaroidMemo(englishBodyAtLimit, LIVING).valid, true);
   assert.deepEqual(validateSeasonalPolaroidMemo({
     ...englishBodyAtLimit,
-    lines: [english.lines[0], `and I ${"x".repeat(34)},`, english.lines[2], english.lines[3]],
+    lines: [english.lines[0], `I love Halloween ${"x".repeat(23)},`, english.lines[2], english.lines[3]],
   }, LIVING), { valid: false, reason: "memo_line_length" });
   assert.equal(validateSeasonalPolaroidMemo({
     ...english,
@@ -270,8 +287,8 @@ test("memo validation enforces exact greeting and body boundaries in both langua
 
   const korean = fallbackSeasonalPolaroidMemo(PASSED);
   const koreanBodyPrefix = korean.lines[1].replace(/[,!?]+$/u, "").slice(0, 21);
-  const koreanBodyAtLimitText = `${koreanBodyPrefix}${"좋아".repeat(21).slice(0, 21 - koreanBodyPrefix.length)},`;
-  const koreanBodyOverLimitText = `${koreanBodyPrefix}${"좋아".repeat(22).slice(0, 22 - koreanBodyPrefix.length)},`;
+  const koreanBodyAtLimitText = `${koreanBodyPrefix}${"좋아".repeat(21).slice(0, 21 - koreanBodyPrefix.length)}.`;
+  const koreanBodyOverLimitText = `${koreanBodyPrefix}${"좋아".repeat(22).slice(0, 22 - koreanBodyPrefix.length)}.`;
   const koreanBodyAtLimit = {
     ...korean,
     lines: [korean.lines[0], koreanBodyAtLimitText, korean.lines[2], korean.lines[3]],
@@ -310,44 +327,44 @@ test("memo system prompt locks the four-line JSON and memorial rules", () => {
   assert.match(prompt, /Rainbow Bridge/);
   assert.match(prompt, /first-person voice/);
   assert.match(prompt, /Subject omission is natural/);
-  assert.match(prompt, /not a letter/);
-  assert.match(prompt, /do not repeat the pet's name after line 1/);
-  assert.match(prompt, /The photo is the moment/);
-  assert.match(prompt, /do not mention objects that are not in the photo/);
+  assert.match(prompt, /affectionate keepsake message from the pet to its owner/);
+  assert.match(prompt, /may include a natural affectionate address to the selected owner/);
+  assert.doesNotMatch(prompt, /do not address the owner/);
+  assert.match(prompt, /pet's name again/);
+  assert.match(prompt, /factual visual context, not the caption's main subject/);
+  assert.match(prompt, /off-camera habit or treat/);
   assert.match(prompt, /personalTouch/);
-  assert.match(prompt, /It is NOT in the photo/);
-  assert.match(prompt, /Leaving both out is fine/);
-  assert.match(prompt, /Never add a second personal fact/);
+  assert.match(prompt, /one or two meaningful facts/);
   assert.match(prompt, /aim for 14-18 characters/);
   assert.match(prompt, /Shape example/);
   assert.match(prompt, /never split a sentence awkwardly/);
   assert.doesNotMatch(prompt, /memoryFocus|creative direction|Build the caption around/);
   assert.doesNotMatch(prompt, /Connectedness is mandatory/);
-  assert.match(prompt, /Prioritize details in this order/);
+  assert.match(prompt, /one or two meaningful facts/);
 
   const living = buildSeasonalPolaroidMemoSystemPrompt("en", "living");
-  assert.match(living, /Line 2 must speak as the pet/);
+  assert.match(living, /Line 2 establishes the pet's first-person voice/);
   assert.match(living, /hard maximum of 40 characters/);
   assert.match(living, /aim for 28-34 characters, about six to eight words/);
   // The English shape example obeys the validator it is teaching.
   const example = JSON.parse(living.match(/Shape example \(do not copy the words\): (\[.*\])/)![1]!) as string[];
   assert.equal(validateSeasonalPolaroidMemo({ locale: "en", lines: example }, { ...LIVING, petName: "Tuli" }).valid, true);
-  assert.ok(example.slice(1).every((line) => line.length >= 28 && line.length <= 34), JSON.stringify(example.map((l) => l.length)));
+  assert.ok(example.slice(1).every((line) => line.length <= 40), JSON.stringify(example.map((l) => l.length)));
   assert.match(living, /Living tone/);
   assert.doesNotMatch(living, /Rainbow Bridge/);
   // Keep the instruction payload bounded while retaining photo grounding and
   // the explicit retry correction contract.
   assert.ok(living.length < 5000, `prompt should stay compact, got ${living.length} chars`);
-  assert.match(prompt, /Do not write letter-style phrases/);
+  assert.match(prompt, /Avoid generic scenery/);
   assert.match(prompt, /never cram, clip, or split a word/);
   assert.match(prompt, /Hard character contract/);
   assert.match(prompt, /Target 28-34 characters for each English body line/);
   assert.match(prompt, /14-18 characters for each Korean body line/);
   assert.match(prompt, /lines 2-4 must each be 22 characters or fewer/);
   assert.match(prompt, /never mention the pet's name again after line 1/);
-  assert.match(prompt, /one tiny connected Polaroid caption/);
+  assert.match(prompt, /three complete visual lines in one coherent caption/);
   assert.match(prompt, /never copy a stock template/);
-  assert.match(prompt, /Avoid repetitive constructions/);
+  assert.match(prompt, /vary sentence openings/);
 });
 
 test("memo retry prompt explicitly requests a compact rewrite", () => {
@@ -357,28 +374,29 @@ test("memo retry prompt explicitly requests a compact rewrite", () => {
   assert.match(messages, /Preserve the selected factual questionnaire details/);
 });
 
-test("creative brief carries identity, voice, an optional owner touch, and off-camera background", () => {
+test("creative brief carries identity, occasion, pet facts, and an optional owner touch", () => {
   const withDetail = buildSeasonalPolaroidCreativeBrief(LIVING);
   assert.deepEqual(withDetail, {
     petName: "Mochi",
     species: "cat",
     status: "living",
     ownerCallName: "Mom",
+    occasion: "Halloween",
     personality: "a love of snacks",
+    habit: "napping in every sunbeam",
+    favoriteTreat: "tuna",
     personalTouch: "Waits by the window.",
-    background: { kind: "habit", text: "napping in every sunbeam" },
   });
   const withoutDetail = buildSeasonalPolaroidCreativeBrief({ ...LIVING, personalDetail: "" });
   assert.equal("personalTouch" in withoutDetail, false, "no owner detail means no personalTouch field at all");
-  assert.deepEqual(withoutDetail.background, { kind: "habit", text: "napping in every sunbeam" });
-  const regenerated = buildSeasonalPolaroidCreativeBrief({ ...LIVING, personalDetail: "", generationNonce: "y" });
-  assert.deepEqual(regenerated.background, { kind: "treat", text: "tuna" });
+  assert.equal(withoutDetail.habit, "napping in every sunbeam");
+  assert.equal(withoutDetail.favoriteTreat, "tuna");
   const payload = JSON.parse(buildSeasonalPolaroidMemoMessages(LIVING)[1]!.content) as { instruction: string; brief: unknown };
   assert.match(payload.instruction, /factual input only/);
   assert.deepEqual(payload.brief, withDetail);
 });
 
-test("Church regression: a doorway habit is sent as off-camera background, never as a visible detail", () => {
+test("Church regression: habit and treat are supplied as facts, separate from image details", () => {
   const church: SeasonalPolaroidPromptAnswers = {
     ...LIVING,
     petName: "Church",
@@ -392,13 +410,13 @@ test("Church regression: a doorway habit is sent as off-camera background, never
   };
   const brief = buildSeasonalPolaroidCreativeBrief(church);
   assert.equal("personalTouch" in brief, false);
-  assert.deepEqual(brief.background, { kind: "habit", text: "keeping watch by the door" });
+  assert.equal(brief.habit, "keeping watch by the door");
+  assert.equal(brief.favoriteTreat, "jerky");
   const text = JSON.stringify(brief);
-  assert.doesNotMatch(text, /jerky|witch|pumpkin/i);
+  assert.doesNotMatch(text, /witch|pumpkin/i);
   const system = buildSeasonalPolaroidMemoSystemPrompt("en", "living");
-  assert.match(system, /background is what this pet is known for off camera/);
-  assert.match(system, /never show it happening in the picture/);
-  assert.match(system, /The photo is the moment/);
+  assert.match(system, /Never imply an off-camera habit or treat is visibly present/);
+  assert.match(system, /factual visual context, not the caption's main subject/);
 });
 
 test("Choke regression: the caption request never carries a second detail or the look", () => {
@@ -416,12 +434,12 @@ test("Choke regression: the caption request never carries a second detail or the
   };
   const text = buildSeasonalPolaroidMemoVisionMessages(choke, { base64: "QUJD", mimeType: "image/jpeg" })[1]!.content;
   const userText = (text as Array<{ type: string; text?: string }>)[0]!.text!;
-  // The habit is the single touch for a first generation; cheese, the costume
-  // and the scene must not be offered to the model at all.
+  // Both personal facts are available; visual costume and scene stay with image context.
   assert.match(userText, /carrying a favorite toy/);
-  assert.doesNotMatch(userText, /cheese|pumpkin|forest|moonlit|cozy/i);
+  assert.match(userText, /cheese/);
+  assert.doesNotMatch(userText, /pumpkin|forest|moonlit/i);
   const system = buildSeasonalPolaroidMemoSystemPrompt("en", "living");
-  assert.match(system, /do not mention objects that are not in the photo/);
+  assert.match(system, /Never imply an off-camera habit or treat is visibly present/);
   // The questionnaire answers still drive the image prompt in full.
   const image = buildSeasonalPolaroidImagePrompt(choke);
   assert.match(image, /pumpkin costume/);
@@ -436,8 +454,10 @@ test("creative brief is localized and the personal touch follows the same select
     species: "고양이",
     status: "passed",
     ownerCallName: "엄마",
+    occasion: "할로윈",
     personality: "간식을 사랑하는 마음",
-    background: { kind: "habit", text: "햇살 아래 낮잠을 자는 모습" },
+    habit: "햇살 아래 낮잠을 자는 모습",
+    favoriteTreat: "참치",
   });
   const koreanPrompt = buildSeasonalPolaroidMemoSystemPrompt("ko", "living");
   const example = JSON.parse(koreanPrompt.match(/Shape example \(do not copy the words\): (\[.*\])/)![1]!) as string[];
@@ -447,7 +467,7 @@ test("creative brief is localized and the personal touch follows the same select
   assert.equal(withDetail.personalTouch, "창가에서 햇살을 좋아했어요.");
   const prompt = buildSeasonalPolaroidMemoSystemPrompt("ko", "passed");
   assert.match(prompt, /Memorial tone/);
-  assert.match(prompt, /natural conversational Korean/);
+  assert.match(prompt, /natural, native-sounding conversational Korean/);
 });
 
 test("vision messages carry the same brief plus the generated photo at low detail", () => {
@@ -523,7 +543,7 @@ test("surprise costumes that resolve to little-angel are allowed to name it in a
   }
   assert.equal(validateSeasonalPolaroidMemo({
     locale: "en",
-    lines: [`Mom, happy Halloween from ${angelName}!`, "I'm in my little angel costume,", "soft wings and a warm lantern glow", "one gentle Halloween moment."],
+    lines: [`Mom, happy Halloween from ${angelName}!`, "I'm a tiny Halloween angel,", "soft wings and a warm lantern glow", "one gentle Halloween moment."],
   }, answers).valid, true);
 });
 
@@ -678,10 +698,10 @@ test("Choco regression: a line cut after a transitive participle or a determiner
   // Sentences that continue across lines after a complete phrase stay valid.
   const valid = [
     ["I'm out here in my witch hat,", "smiling in the moonlight, feeling brave,", "and this spooky night is all mine."],
-    ["I'm feeling extra brave tonight,", "nose in the leaves, tail going,", "and this is my kind of spooky."],
+    ["I'm feeling extra brave on Halloween,", "nose in the leaves, tail going,", "and this is my kind of spooky."],
     ["I'm by the door waiting,", "ears up, witch hat on,", "and Halloween is my favorite."],
-    ["I'm all cozy in my little hat,", "the moon is bright and I'm so happy,", "and this night feels like home."],
-    ["I'm wearing my hat with pride,", "it's my favorite, honestly,", "and the moon knows it too."],
+    ["I'm all cozy in my little hat,", "Halloween moonlight makes me happy,", "and this night feels like home."],
+    ["I'm wearing my hat with pride,", "The Halloween moon makes me happy,", "and the moon knows it too."],
   ];
   for (const body of valid) {
     const result = validateSeasonalPolaroidMemo({ locale: "en", lines: ["Mom, happy Halloween from Choco!", ...body] }, choco);
@@ -693,7 +713,10 @@ test("Choco regression: a line cut after a transitive participle or a determiner
     const lines = ["엄마, 초코야! 해피 할로윈!", "오늘은 마녀 모자 쓰고,", line3, "이런 밤이 제일 좋아."];
     assert.deepEqual(validateSeasonalPolaroidMemo({ locale: "ko", lines }, ko), { valid: false, reason: "memo_incomplete" }, line3);
   }
-  assert.equal(validateSeasonalPolaroidMemo({ locale: "ko", lines: ["엄마, 초코야! 해피 할로윈!", "오늘은 마녀 모자 쓰고,", "달빛 아래서 너무 신나,", "이런 밤이 제일 좋아."] }, ko).valid, true);
+  assert.deepEqual(
+    validateSeasonalPolaroidMemo({ locale: "ko", lines: ["엄마, 초코야! 해피 할로윈!", "오늘은 마녀 모자를 썼어.", "달빛 아래서 신나게 놀아.", "이런 밤이 제일 좋아."] }, ko),
+    { valid: true, memo: { locale: "ko", lines: ["엄마, 초코야! 해피 할로윈!", "오늘은 마녀 모자를 썼어.", "달빛 아래서 신나게 놀아.", "이런 밤이 제일 좋아."] } },
+  );
   // The prompt teaches the same rule instead of asking for lines to be filled out.
   const prompt = buildSeasonalPolaroidMemoSystemPrompt("en", "living");
   assert.match(prompt, /break only after a complete phrase/);
@@ -702,18 +725,21 @@ test("Choco regression: a line cut after a transitive participle or a determiner
 
 test("Korean completeness allows sentence-final syllables and rejects connective or particle endings", () => {
   const answers: SeasonalPolaroidPromptAnswers = { ...LIVING, locale: "ko", petName: "모찌" };
-  const good = ["엄마, 모찌야! 해피 할로윈!", "오늘은 호박 옷 입고,", "낙엽 위에서 코 킁킁,", "이런 할로윈이 제일 좋아"];
+  const good = ["엄마, 모찌야! 해피 할로윈!", "오늘은 호박 옷을 입었어.", "낙엽 위에서 코를 킁킁거려.", "이런 할로윈이 제일 좋아"];
   assert.equal(validateSeasonalPolaroidMemo({ locale: "ko", lines: good }, answers).valid, true);
-  const connective = ["엄마, 모찌야! 해피 할로윈!", "오늘은 호박 옷 입고,", "낙엽 위에서 코 킁킁,", "이런 할로윈이 제일 좋아서"];
+  const connective = ["엄마, 모찌야! 해피 할로윈!", "오늘은 호박 옷을 입고,", "낙엽 위에서 코를 킁킁거려.", "이런 할로윈이 제일 좋아서"];
   assert.deepEqual(validateSeasonalPolaroidMemo({ locale: "ko", lines: connective }, answers), { valid: false, reason: "memo_incomplete" });
-  const particle = ["엄마, 모찌야! 해피 할로윈!", "오늘은 호박 옷과", "낙엽 위에서 코 킁킁,", "이런 할로윈이 제일 좋아."];
+  const particle = ["엄마, 모찌야! 해피 할로윈!", "오늘은 호박 옷과", "낙엽 위에서 코를 킁킁거려.", "이런 할로윈이 제일 좋아."];
   assert.deepEqual(validateSeasonalPolaroidMemo({ locale: "ko", lines: particle }, answers), { valid: false, reason: "memo_incomplete" });
 });
 
 test("every fallback and both prompt shape examples satisfy the completeness rule", () => {
   for (const locale of ["en", "ko"] as const) {
     const prompt = buildSeasonalPolaroidMemoSystemPrompt(locale, "living");
-    assert.match(prompt, /Every line must be complete at its break/);
+    assert.match(
+      prompt,
+      locale === "ko" ? /Every Korean line must be grammatically complete/ : /Every line must be complete at its break/,
+    );
     const example = JSON.parse(prompt.match(/Shape example \(do not copy the words\): (\[.*\])/)![1]!) as string[];
     assert.equal(validateSeasonalPolaroidMemo({ locale, lines: example }, { ...LIVING, locale, petName: locale === "ko" ? "뚜리" : "Tuli" }).valid, true);
   }

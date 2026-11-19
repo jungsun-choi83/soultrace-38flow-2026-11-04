@@ -14,8 +14,10 @@ import {
   buildSeasonalPolaroidMemoMessages,
   buildSeasonalPolaroidMemoVisionMessages,
   fallbackSeasonalPolaroidMemo,
+  resolvedSeasonalPolaroidMemoCallName,
   validateSeasonalPolaroidMemo,
   type SeasonalPolaroidMemoImage,
+  type SeasonalPolaroidMemoRetryReason,
   type SeasonalPolaroidPromptAnswers,
 } from "./seasonal-polaroid-prompts.ts";
 import type { SeasonalPolaroidMemo } from "./seasonal-polaroid-contract.ts";
@@ -99,6 +101,10 @@ export type SeasonalPolaroidMemoGenerationResult = {
   firstAttemptValid: boolean;
   /** Allow-listed failure codes per failed attempt, in order. Never contains model or user text. */
   failureCodes: string[];
+  /** Safe repairs applied to an otherwise valid caption, if any. */
+  repairCodes: string[];
+  /** Allow-listed stage and provider diagnostics per failed attempt. */
+  failureDetails: SeasonalMemoFailureDetail[];
   usage: {
     promptTokens: number;
     completionTokens: number;
@@ -117,7 +123,11 @@ export type SeasonalMemoExecutionStage =
 const SAFE_MEMO_VALIDATION_REASONS = new Set([
   "memo_shape_or_locale",
   "memo_line_length",
+  "memo_occasion_relevance",
+  "memo_korean_speech_level",
+  "memo_line_coherence",
   "memo_missing_call_name",
+  "memo_wrong_owner_call_name",
   "memo_missing_pet_name",
   "memo_wrong_locale",
   "memo_third_person",
@@ -127,6 +137,7 @@ const SAFE_MEMO_VALIDATION_REASONS = new Set([
   "memo_owner_instruction",
   "memo_incomplete",
   "memo_memorial_language",
+  "memo_korean_caption_quality",
 ]);
 
 class SeasonalMemoValidationError extends Error {
@@ -146,17 +157,43 @@ function safeMemoValidationReason(error: unknown): string | null {
   return SAFE_MEMO_VALIDATION_REASONS.has(error.reason) ? error.reason : null;
 }
 
+function retryReasonForFailure(code: string): SeasonalPolaroidMemoRetryReason | undefined {
+  return code === "memo_line_length" || code === "memo_occasion_relevance" || code === "memo_korean_speech_level" || code === "memo_line_coherence"
+    ? code
+    : undefined;
+}
+
 function parseMemo(
   content: string,
   answers: SeasonalPolaroidPromptAnswers,
   markStage?: (stage: SeasonalMemoExecutionStage) => void,
-): SeasonalPolaroidMemo {
+): { memo: SeasonalPolaroidMemo; repairCodes: string[] } {
   markStage?.("response_parsing");
   const parsed: unknown = JSON.parse(content);
   markStage?.("validation");
   const validation = validateSeasonalPolaroidMemo(parsed, answers);
-  if (!validation.valid) throw new SeasonalMemoValidationError(validation.reason);
-  return validation.memo;
+  if (validation.valid) return { memo: validation.memo, repairCodes: [] };
+
+  // Korean captions may render a Latin-script pet name phonetically in Hangul.
+  // Repair only the greeting, preserve the supplied spelling, then rerun every
+  // validation rule on the complete caption.
+  if (
+    answers.locale === "ko" &&
+    (validation.reason === "memo_missing_pet_name" || validation.reason === "memo_missing_call_name") &&
+    parsed && typeof parsed === "object" &&
+    "lines" in parsed && Array.isArray(parsed.lines) && parsed.lines.length === 4 &&
+    parsed.lines.every((line) => typeof line === "string")
+  ) {
+    const petName = answers.petName.trim();
+    const lastCodePoint = petName.codePointAt(petName.length - 1) ?? 0;
+    const hasBatchim = lastCodePoint >= 0xac00 && lastCodePoint <= 0xd7a3 && (lastCodePoint - 0xac00) % 28 !== 0;
+    const greeting = `${resolvedSeasonalPolaroidMemoCallName(answers, "ko")}, \uB098 ${petName}${hasBatchim ? "\uC544" : "\uC57C"}!`;
+    const repaired = { locale: answers.locale, lines: [greeting, ...parsed.lines.slice(1)] };
+    const repairedValidation = validateSeasonalPolaroidMemo(repaired, answers);
+    if (repairedValidation.valid) return { memo: repairedValidation.memo, repairCodes: ["memo_korean_greeting"] };
+  }
+
+  throw new SeasonalMemoValidationError(validation.reason);
 }
 
 export type SeasonalMemoErrorCategory =
@@ -173,6 +210,11 @@ export type SeasonalMemoErrorDiagnostics = {
   code: string | null;
   param: string | null;
   errorClass: string;
+};
+
+export type SeasonalMemoFailureDetail = SeasonalMemoErrorDiagnostics & {
+  stage: SeasonalMemoExecutionStage;
+  validationReason: string | null;
 };
 
 const SAFE_ERROR_CLASSES = new Set([
@@ -297,6 +339,8 @@ export async function generateSeasonalPolaroidMemo({
   let lastUsage: SeasonalPolaroidMemoGenerationResult["usage"] = null;
   let lastFailureCode = "seasonal_memo_model_or_parse_error";
   const failureCodes: string[] = [];
+  const repairCodes: string[] = [];
+  const failureDetails: SeasonalMemoFailureDetail[] = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let executionStage: SeasonalMemoExecutionStage = "preparing_request";
     const markStage = (stage: SeasonalMemoExecutionStage) => {
@@ -304,6 +348,7 @@ export async function generateSeasonalPolaroidMemo({
     };
     try {
       markStage("preparing_request");
+      const retryReason = attempt > 0 ? retryReasonForFailure(lastFailureCode) : undefined;
       const request = {
         model: "gpt-4o-mini",
         temperature: 0.35,
@@ -315,11 +360,11 @@ export async function generateSeasonalPolaroidMemo({
           ? buildSeasonalPolaroidMemoVisionMessages(
               answers,
               image,
-              attempt > 0 && lastFailureCode === "memo_line_length" ? "memo_line_length" : undefined,
+              retryReason,
             )
           : buildSeasonalPolaroidMemoMessages(
               answers,
-              attempt > 0 && lastFailureCode === "memo_line_length" ? "memo_line_length" : undefined,
+              retryReason,
             ),
       };
       markStage("api_call");
@@ -335,25 +380,30 @@ export async function generateSeasonalPolaroidMemo({
         : null;
       const content = completion.choices[0]?.message.content;
       if (!content) throw new Error("seasonal_memo_empty");
-      const memo = parseMemo(content, answers, markStage);
+      const parsedMemo = parseMemo(content, answers, markStage);
+      repairCodes.push(...parsedMemo.repairCodes);
+      const firstAttemptValid = attempt === 0 && parsedMemo.repairCodes.length === 0;
       console.info("[seasonal-polaroid] memo path", {
         path: "ai",
-        outcome: attempt > 0 ? "ai_retry" : "ai_first_try",
+        outcome: attempt > 0 ? "ai_retry" : parsedMemo.repairCodes.length > 0 ? "ai_repaired" : "ai_first_try",
         vision: Boolean(image),
         retried: attempt > 0,
         attempts: attempt + 1,
         failureCodes,
+        repairCodes,
         ...(attempt > 0 ? { recoveredAfter: lastFailureCode } : {}),
       });
       return {
-        memo,
+        memo: parsedMemo.memo,
         modelUsed: "gpt-4o-mini",
         retried: attempt > 0,
         fallback: false,
         vision: Boolean(image),
         attempts: attempt + 1,
-        firstAttemptValid: attempt === 0,
+        firstAttemptValid,
         failureCodes: [...failureCodes],
+        repairCodes: [...repairCodes],
+        failureDetails: [...failureDetails],
         usage: lastUsage,
       };
     } catch (error) {
@@ -366,6 +416,7 @@ export async function generateSeasonalPolaroidMemo({
         ? diagnosticFailureCode(diagnostics)
         : parsedFailureCode;
       failureCodes.push(lastFailureCode);
+      failureDetails.push({ stage: executionStage, ...diagnostics, validationReason });
       console.warn("[seasonal-polaroid] memo request failed", {
         stage: executionStage,
         vision: Boolean(image),
@@ -385,6 +436,7 @@ export async function generateSeasonalPolaroidMemo({
     retried: true,
     attempts: 2,
     failureCodes,
+    repairCodes,
     validationFailureReason: lastFailureCode,
   });
 
@@ -397,6 +449,8 @@ export async function generateSeasonalPolaroidMemo({
     attempts: 2,
     firstAttemptValid: false,
     failureCodes: [...failureCodes],
+    repairCodes: [...repairCodes],
+    failureDetails: [...failureDetails],
     usage: lastUsage,
   };
 }

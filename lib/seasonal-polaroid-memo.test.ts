@@ -40,7 +40,8 @@ test("memo prompt carries questionnaire data and first-person rules", () => {
   assert.equal(payload.brief.petName, "Tuli");
   assert.equal(payload.brief.ownerCallName, "Mom");
   assert.equal(payload.brief.personalTouch, "Waits by the window.");
-  assert.equal("favoriteTreat" in payload.brief, false);
+  assert.equal(payload.brief.habit, "napping in every sunbeam");
+  assert.equal(payload.brief.favoriteTreat, "tuna");
 });
 
 test("memo validation rejects the former third-person template", () => {

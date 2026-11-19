@@ -61,6 +61,20 @@ export type SeasonalPolaroidGenerationMetadata = {
   imageModel: string;
   textModel: string | null;
   generatedAt: string;
+  memoFallback?: boolean;
+  memoAttempts?: number;
+  memoFirstAttemptValid?: boolean;
+  memoFailureCodes?: string[];
+  memoRepairCodes?: string[];
+  memoFailureDetails?: Array<{
+    stage: "preparing_request" | "api_call" | "response_received" | "response_parsing" | "validation";
+    category: "schema_rejection" | "authentication" | "rate_limit" | "network" | "server" | "unknown";
+    status: number | null;
+    code: string | null;
+    param: string | null;
+    errorClass: string;
+    validationReason: string | null;
+  }>;
 };
 
 export type SeasonalPolaroidResult = {
