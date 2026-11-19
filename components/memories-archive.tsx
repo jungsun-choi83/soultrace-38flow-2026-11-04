@@ -359,12 +359,6 @@ export function MemoriesArchive({
           <p className="mt-5 px-1 text-sm leading-6 text-[#1e4d3a]">이 환경에서는 계정 저장이 아직 준비되지 않았어요. 사진은 서버에 올리지 않아요.</p>
         ) : null}
 
-        {folderView || access !== "owner" || !pet || loading || loadError ? null : (
-          <section id="months" data-testid="memories-months" className="mt-6">
-            <CategoryFolderGrid petId={pet.petId} branch={homeBranch} lang={folderLang} hits={visible} letters={letters} />
-          </section>
-        )}
-
         {!folderView && access === "owner" && pet ? (
           <MediaImportForms
             id="import"
@@ -810,7 +804,7 @@ function MonthFolders({
           <BackIcon />
         </Link>
         <h1 className="st-headline mt-3 text-[1.7rem] font-semibold text-[#1e4d3a]">
-          {lang === "ko" ? "우리아이의 여정" : "Our pet's journey"}
+          {lang === "ko" ? "추억" : "Memories"}
         </h1>
         {petName ? <p className="mt-2 text-sm text-[#1e4d3a]">{petName}</p> : null}
       </header>

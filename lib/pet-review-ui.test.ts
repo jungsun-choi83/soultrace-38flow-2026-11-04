@@ -38,7 +38,8 @@ test("normal Welcome and Free Trial remain distinct from the Living and Memorial
   const choice = read("app/choose/page.tsx");
   assert.match(welcome, /<HomeEntry>[\s\S]*<FreeTrialStart\s*\/>/);
   assert.match(trial, /href="\/try"/);
-  assert.match(trial, /href="\/choose"/);
+  assert.match(trial, /이미 계정이 있어요/);
+  assert.doesNotMatch(trial, /기록 홈으로|href="\/choose"/);
   assert.match(trial, /absolute inset-0 h-full w-full object-cover/);
   assert.doesNotMatch(trial, /aspect-\[3\/4\]|rounded-\[22px\]/);
   assert.match(choice, /<EntryChoice petId=\{petId\} \/>/);

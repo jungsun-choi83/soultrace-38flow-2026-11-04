@@ -12,7 +12,6 @@ const COPY = {
     bodyRest: "가입하기 전에 결과를 먼저 볼 수 있어요.",
     start: "비회원으로 만들어 보기",
     login: "이미 계정이 있어요 · 로그인",
-    homes: "기록 홈으로",
   },
   en: {
     title: "Make your pet's first polaroid",
@@ -20,7 +19,6 @@ const COPY = {
     bodyRest: "You can see the result before creating an account.",
     start: "Try it without an account",
     login: "I already have an account · Sign in",
-    homes: "Open the memory home",
   },
 } as const;
 
@@ -58,9 +56,6 @@ export function FreeTrialStart() {
               className="flex min-h-11 items-center justify-center rounded-full border border-[#d9c2b0] bg-[#f8f1ea]/95 px-4 text-sm font-semibold text-[#1e4d3a]"
             >
               {copy.login}
-            </Link>
-            <Link href="/choose" className="pb-0.5 text-center text-sm text-[#5a4a3a]">
-              {copy.homes}
             </Link>
           </div>
         </div>
