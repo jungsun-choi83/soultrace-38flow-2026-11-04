@@ -18,6 +18,37 @@ export function rememberMissingTimeline(code: string | undefined | null) {
   noteTimelineAvailability(code);
 }
 
+/** Request-level cache for signed URLs to avoid duplicate storage API calls */
+const signedUrlCache = new Map<string, { url: string | null; expiresAt: number }>();
+
+function getSignedUrlCacheKey(bucket: string, path: string): string {
+  return `${bucket}:${path}`;
+}
+
+function isCacheValid(expiresAt: number): boolean {
+  return Date.now() < expiresAt;
+}
+
+/** Memoized signed URL creation to reduce Supabase storage API calls */
+async function createSignedUrlMemoized(
+  supabase: AuthClient,
+  bucket: string,
+  path: string,
+  expiresIn: number = 3600,
+): Promise<string | null> {
+  const cacheKey = getSignedUrlCacheKey(bucket, path);
+  const cached = signedUrlCache.get(cacheKey);
+
+  if (cached && isCacheValid(cached.expiresAt)) {
+    return cached.url;
+  }
+
+  const result = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
+  const expiresAt = Date.now() + (expiresIn * 1000 * 0.95); // 95% of expiry time
+  signedUrlCache.set(cacheKey, { url: result.data?.signedUrl ?? null, expiresAt });
+  return result.data?.signedUrl ?? null;
+}
+
 type AuthClient = NonNullable<Awaited<ReturnType<typeof createSupabaseAuthServerClient>>>;
 
 export type HomePet = {
@@ -135,8 +166,8 @@ export async function loadPetHome(supabase: AuthClient, userId: string) {
       .flatMap((entry) => entry.pet_timeline_assets ?? [])
       .filter((asset) => asset.content_type.startsWith("image/"))
       .sort((a, b) => a.asset_order - b.asset_order)[0];
-    const signed = image
-      ? await supabase.storage.from(image.storage_bucket).createSignedUrl(image.storage_path, 3600)
+    const signedUrl = image
+      ? await createSignedUrlMemoized(supabase, image.storage_bucket, image.storage_path, 3600)
       : null;
     return {
       petId: pet.pet_id,
@@ -149,7 +180,7 @@ export async function loadPetHome(supabase: AuthClient, userId: string) {
         .filter((entry) => entry.pet_id === pet.pet_id)
         .map((entry) => entry.happened_on ?? entry.created_at.slice(0, 10)),
       letterCount: letters.filter((letter) => letter.pet_id === pet.pet_id).length,
-      avatarUrl: signed?.data?.signedUrl ?? null,
+      avatarUrl: signedUrl,
     };
   }));
   const names = new Map(pets.map((pet) => [pet.petId, pet.petName]));
@@ -177,8 +208,8 @@ export async function loadPetHome(supabase: AuthClient, userId: string) {
     const image = [...(entry.pet_timeline_assets ?? [])]
       .sort((a, b) => a.asset_order - b.asset_order)
       .find((asset) => asset.content_type.startsWith("image/"));
-    const signed = image
-      ? await supabase.storage.from(image.storage_bucket).createSignedUrl(image.storage_path, 3600)
+    const imageUrl = image
+      ? await createSignedUrlMemoized(supabase, image.storage_bucket, image.storage_path, 3600)
       : null;
     return {
       entryId: entry.entry_id,
@@ -189,7 +220,7 @@ export async function loadPetHome(supabase: AuthClient, userId: string) {
       story: entry.story,
       happenedOn: entry.happened_on,
       createdAt: entry.created_at,
-      imageUrl: signed?.data?.signedUrl ?? null,
+      imageUrl,
       favorite: Boolean(entry.favorite),
     };
   }));
