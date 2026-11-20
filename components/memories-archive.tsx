@@ -405,7 +405,7 @@ export function MemoriesArchive({
                 )}
                 {selected.kind === "image" && selected.item.origin !== "polaroid" ? (
                   <>
-                    <Link href={polaroidHrefFromArchive(pet.petId)} className="st-btn st-btn-forest w-full">폴라로이드 만들기</Link>
+                    <Link href={polaroidHrefFromArchive(pet.petId, selected.item.entryId, selected.assetId)} className="st-btn st-btn-forest w-full">폴라로이드 만들기</Link>
                     <Link href={beamSceneHref(pet.petId, selected.item.entryId, selected.assetId)} className="st-btn st-btn-quiet w-full">Beam 장면 미리보기</Link>
                   </>
                 ) : null}

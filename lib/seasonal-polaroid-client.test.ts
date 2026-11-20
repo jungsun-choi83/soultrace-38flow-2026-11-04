@@ -21,8 +21,6 @@ test("Seasonal client builds the backend multipart contract without photo data U
     vibe: "cuteCozy",
     personalities: ["foodie", "cuddleBug"],
     habit: "toyCarrier",
-    favoriteTreat: "pumpkinBiscuit",
-    customTreat: "",
     callName: "mom",
     customCallName: "",
     personalDetail: "Loves the autumn leaves",
@@ -39,6 +37,33 @@ test("Seasonal client builds the backend multipart contract without photo data U
   assert.equal(form.has("secondaryPhoto"), false);
   assert.equal(form.getAll("primaryPhoto").length, 1);
   assert.equal(form.has("photo"), false);
+  assert.equal(form.has("personalDetail"), false);
+});
+
+test("the v2 multipart request sends optional free text without a legacy personal detail", () => {
+  const primary = new File([new Uint8Array([1, 2, 3])], "primary.webp", { type: "image/webp" });
+  const form = buildSeasonalPolaroidFormData({
+    themeId: "felt-doll",
+    locale: "ko",
+    petName: "Coco",
+    species: "dog",
+    status: "living",
+    costume: "knit-scarf",
+    scene: "tiny-armchair",
+    vibe: "cute-cozy",
+    personalities: [],
+    habit: "",
+    callName: "mom",
+    customCallName: "",
+    occasionQuestion1: "",
+    occasionQuestion2: "함께한 시간이 따뜻하게 느껴져요.",
+    questionnaireVersion: "occasion-v2",
+  }, primary);
+
+  assert.equal(form.get("occasionQuestion1"), "");
+  assert.equal(form.get("occasionQuestion2"), "함께한 시간이 따뜻하게 느껴져요.");
+  assert.equal(form.get("questionnaireVersion"), "occasion-v2");
+  assert.equal(form.has("personalDetail"), false);
 });
 
 test("Seasonal client forwards an optional special-day occasion", () => {
@@ -55,8 +80,6 @@ test("Seasonal client forwards an optional special-day occasion", () => {
     vibe: "christmas-cozy",
     personalities: ["cuddle-bug"],
     habit: "toy-carrier",
-    favoriteTreat: "cheese",
-    customTreat: "",
     callName: "mom",
     customCallName: "",
     personalDetail: "",
@@ -69,8 +92,7 @@ test("canonical Pet ID is optional for guest requests and travels separately fro
   const primary = new File([new Uint8Array([1, 2, 3])], "primary.webp", { type: "image/webp" });
   const answers = {
     themeId: "halloween", locale: "en", petName: "Bubu", species: "dog", status: "living",
-    costume: "pumpkin", scene: "pumpkinPatch", vibe: "cuteCozy", personalities: ["foodie"],
-    habit: "toyCarrier", favoriteTreat: "pumpkinBiscuit", callName: "mom", customTreat: "", customCallName: "",
+    costume: "pumpkin", scene: "pumpkinPatch", vibe: "cuteCozy", personalities: ["foodie"], habit: "", callName: "mom",
   };
   const guestForm = buildSeasonalPolaroidFormData(answers, primary);
   const petForm = buildSeasonalPolaroidFormData(answers, primary, "11111111-1111-4111-8111-111111111111");

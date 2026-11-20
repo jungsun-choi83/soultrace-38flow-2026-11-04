@@ -65,7 +65,6 @@ const ANSWERS: SeasonalPolaroidPromptAnswers = {
   vibe: "cute-cozy",
   personalities: ["foodie", "cuddle-bug"],
   habit: "sunbeam-napper",
-  favoriteTreat: "tuna",
   callName: "mom",
   personalDetail: "Waits by the window.",
 };
@@ -99,7 +98,6 @@ test("Korean Latin-script pet names are repaired in the greeting and revalidated
     vibe: "handmade-warm",
     personalities: ["zoomies"],
     habit: "whole-body-wiggle",
-    favoriteTreat: "pumpkin-biscuit",
     callName: "both",
   };
   const modelLines = [
@@ -349,7 +347,6 @@ test("Bibo's birthday caption retries when occasion context is missing", async (
     personalities: ["zoomies"],
     callName: "mom",
     habit: "toy-carrier",
-    favoriteTreat: "cheese",
   };
   const requests: unknown[] = [];
   const result = await generateSeasonalPolaroidMemo({
@@ -384,7 +381,6 @@ test("Korean mixed speech levels trigger one targeted retry and preserve safe fa
     personalities: ["zoomies"],
     callName: "mom",
     habit: "toy-carrier",
-    favoriteTreat: "cheese",
   };
   const requests: unknown[] = [];
   const result = await generateSeasonalPolaroidMemo({

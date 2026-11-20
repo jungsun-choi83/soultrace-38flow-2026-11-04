@@ -35,6 +35,7 @@ export type SeasonalPolaroidQueuePayload = {
   answers: {
     themeId: string;
     occasionId?: string;
+    generationMode?: "preserve-original-scene";
     locale: string;
     petName: string;
     species: string;
@@ -45,11 +46,12 @@ export type SeasonalPolaroidQueuePayload = {
     personalities: string[];
     habit: string;
     customHabit: string;
-    favoriteTreat: string;
-    customTreat: string;
     callName: string;
     customCallName: string;
-    personalDetail: string;
+    personalDetail?: string;
+    occasionQuestion1?: string;
+    occasionQuestion2?: string;
+    questionnaireVersion?: "occasion-v1" | "occasion-v2";
     generationNonce: string;
   };
   inputPhotos: { primary: string; secondary: string | null };
@@ -62,8 +64,9 @@ export type SeasonalPolaroidQueuePayload = {
   };
 };
 
-function normalizedAnswers(answers: SeasonalPolaroidQuestionnaire) {
-  return {
+function normalizedAnswers(answers: SeasonalPolaroidQuestionnaire): SeasonalPolaroidQueuePayload["answers"] {
+  const generationMode = String(answers.generationMode ?? "").trim();
+  const base = {
     themeId: String(answers.themeId).trim(),
     occasionId: String(answers.occasionId ?? "").trim(),
     locale: String(answers.locale).trim(),
@@ -76,13 +79,28 @@ function normalizedAnswers(answers: SeasonalPolaroidQuestionnaire) {
     personalities: answers.personalities.map((value) => String(value).trim()),
     habit: String(answers.habit).trim(),
     customHabit: String(answers.customHabit ?? "").trim(),
-    favoriteTreat: String(answers.favoriteTreat).trim(),
-    customTreat: String(answers.customTreat ?? "").trim(),
     callName: String(answers.callName).trim(),
     customCallName: String(answers.customCallName ?? "").trim(),
-    personalDetail: String(answers.personalDetail ?? "").trim(),
+    ...(answers.questionnaireVersion !== "occasion-v2" ? { personalDetail: String(answers.personalDetail ?? "").trim() } : {}),
     generationNonce: String(answers.generationNonce ?? "").trim(),
+    ...(answers.questionnaireVersion === "occasion-v1" || answers.questionnaireVersion === "occasion-v2"
+      ? { questionnaireVersion: answers.questionnaireVersion }
+      : {}),
   };
+  const result: SeasonalPolaroidQueuePayload["answers"] = base;
+  if (generationMode === "preserve-original-scene") {
+    result.generationMode = "preserve-original-scene";
+  }
+  if (String(answers.occasionQuestion1 ?? "").trim()) {
+    result.occasionQuestion1 = String(answers.occasionQuestion1).trim();
+  }
+  if (String(answers.occasionQuestion2 ?? "").trim()) {
+    result.occasionQuestion2 = String(answers.occasionQuestion2).trim();
+  }
+  if (String(answers.generationMode ?? "").trim() === "preserve-original-scene") {
+    result.generationMode = "preserve-original-scene";
+  }
+  return result;
 }
 
 export async function seasonalPolaroidRequestHash(args: {

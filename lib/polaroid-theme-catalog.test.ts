@@ -56,7 +56,6 @@ test("felt, gouache, and crayon prompts stay distinct and never reuse the Hallow
     vibe: "cute-cozy",
     personalities: ["cuddle-bug"],
     habit: "toy-carrier",
-    favoriteTreat: "cheese",
     callName: "mom",
   };
   const gouache: SeasonalPolaroidPromptAnswers = {
@@ -132,7 +131,6 @@ test("new art styles without an occasion stay distinct in image prompts and shar
       vibe: item.vibe,
       personalities: ["cuddle-bug"],
       habit: "sunbeam-napper",
-      favoriteTreat: "tuna",
       callName: "mom",
     };
     const imagePrompt = buildSeasonalPolaroidImagePrompt(answers);
@@ -187,7 +185,6 @@ test("Gouache plus a Christmas occasion stays Christmas in image and caption pro
     vibe: "christmas-cozy",
     personalities: ["cuddle-bug"],
     habit: "sunbeam-napper",
-    favoriteTreat: "tuna",
     callName: "mom",
   };
   const imagePrompt = buildSeasonalPolaroidImagePrompt(gouacheChristmas);
@@ -243,7 +240,6 @@ test("an explicit non-Halloween occasion overrides a stale Halloween theme fallb
     vibe: "christmas-cozy",
     personalities: ["cuddle-bug"],
     habit: "sunbeam-napper",
-    favoriteTreat: "tuna",
     callName: "mom",
   };
   const imagePrompt = buildSeasonalPolaroidImagePrompt(answers);
@@ -270,7 +266,6 @@ test("explicit Halloween art-style requests use Halloween direction and greeting
     vibe: "cute-cozy",
     personalities: ["cuddle-bug"],
     habit: "sunbeam-napper",
-    favoriteTreat: "tuna",
     callName: "mom",
   };
   const imagePrompt = buildSeasonalPolaroidImagePrompt(answers);
@@ -300,7 +295,6 @@ test("legacy Halloween requests without an occasion keep their original image an
     vibe: "cute-cozy",
     personalities: ["cuddle-bug"],
     habit: "sunbeam-napper",
-    favoriteTreat: "tuna",
     callName: "mom",
   };
   const imagePrompt = buildSeasonalPolaroidImagePrompt(legacy);
@@ -370,9 +364,6 @@ test("the full 12-occasion catalog is implemented, with Christmas still behind i
 
 test("Birthday prompts and four-line fallbacks are frame-independent, bilingual, and avoid invented details", () => {
   const frames: SeasonalPolaroidPromptAnswers[] = [
-    { themeId: "felt-doll", occasionId: "birthday-star", locale: "en", petName: "Mochi", species: "cat", status: "living", costume: "knit-scarf", scene: "tiny-armchair", vibe: "cute-cozy", personalities: ["cuddle-bug"], habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window." },
-    { themeId: "gouache-story", occasionId: "birthday-star", locale: "en", petName: "Mochi", species: "cat", status: "living", costume: "picture-cape", scene: "meadow-path", vibe: "bright-story", personalities: ["cuddle-bug"], habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window." },
-    { themeId: "crayon-diary", occasionId: "birthday-star", locale: "en", petName: "Mochi", species: "cat", status: "living", costume: "crayon-bow", scene: "diary-page", vibe: "handmade-warm", personalities: ["cuddle-bug"], habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window." },
   ];
   const imagePrompts = frames.map((answers) => buildSeasonalPolaroidImagePrompt(answers));
   const captionPrompts = frames.map((answers) => buildSeasonalPolaroidMemoSystemPrompt("en", "living", undefined, answers.themeId, answers.occasionId));
@@ -416,9 +407,6 @@ test("Birthday prompts and four-line fallbacks are frame-independent, bilingual,
 
 test("New Year prompts and four-line fallbacks are frame-independent, bilingual, hopeful, and non-Halloween", () => {
   const frames: SeasonalPolaroidPromptAnswers[] = [
-    { themeId: "felt-doll", occasionId: "newyear-blessing", locale: "en", petName: "Mochi", species: "cat", status: "living", costume: "knit-scarf", scene: "tiny-armchair", vibe: "cute-cozy", personalities: ["cuddle-bug"], habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window." },
-    { themeId: "gouache-story", occasionId: "newyear-blessing", locale: "en", petName: "Mochi", species: "cat", status: "living", costume: "picture-cape", scene: "meadow-path", vibe: "bright-story", personalities: ["cuddle-bug"], habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window." },
-    { themeId: "crayon-diary", occasionId: "newyear-blessing", locale: "en", petName: "Mochi", species: "cat", status: "living", costume: "crayon-bow", scene: "diary-page", vibe: "handmade-warm", personalities: ["cuddle-bug"], habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window." },
   ];
   const imagePrompts = frames.map((answers) => buildSeasonalPolaroidImagePrompt(answers));
   const captionPrompts = frames.map((answers) => buildSeasonalPolaroidMemoSystemPrompt("en", "living", undefined, answers.themeId, answers.occasionId));
@@ -503,7 +491,6 @@ test("the four additional occasions stay frame-independent, personalized, biling
           status,
           personalities: ["cuddle-bug"],
           habit: "sunbeam-napper",
-          favoriteTreat: "tuna",
           callName: "mom",
           personalDetail: "Waits by the window.",
         }));
@@ -547,18 +534,15 @@ test("Adoption Day prompts are frame-independent, bilingual, personalized, and n
   const frames: SeasonalPolaroidPromptAnswers[] = [
     {
       themeId: "felt-doll", occasionId: "adoption-day", locale: "en", petName: "Mochi", species: "cat", status: "living",
-      costume: "knit-scarf", scene: "tiny-armchair", vibe: "cute-cozy", personalities: ["cuddle-bug"],
-      habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window.",
+      costume: "knit-scarf", scene: "tiny-armchair", vibe: "cute-cozy", personalities: ["cuddle-bug"], habit: "", callName: "mom", questionnaireVersion: "occasion-v1",
     },
     {
       themeId: "gouache-story", occasionId: "adoption-day", locale: "en", petName: "Mochi", species: "cat", status: "living",
-      costume: "picture-cape", scene: "meadow-path", vibe: "bright-story", personalities: ["cuddle-bug"],
-      habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window.",
+      costume: "picture-cape", scene: "meadow-path", vibe: "bright-story", personalities: ["cuddle-bug"], habit: "", callName: "mom", questionnaireVersion: "occasion-v1",
     },
     {
       themeId: "crayon-diary", occasionId: "adoption-day", locale: "en", petName: "Mochi", species: "cat", status: "living",
-      costume: "crayon-bow", scene: "diary-page", vibe: "handmade-warm", personalities: ["cuddle-bug"],
-      habit: "sunbeam-napper", favoriteTreat: "tuna", callName: "mom", personalDetail: "Waits by the window.",
+      costume: "crayon-bow", scene: "diary-page", vibe: "handmade-warm", personalities: ["cuddle-bug"], habit: "", callName: "mom", questionnaireVersion: "occasion-v1",
     },
   ];
   const imagePrompts = frames.map((answers) => buildSeasonalPolaroidImagePrompt(answers));

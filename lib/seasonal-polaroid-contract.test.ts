@@ -25,7 +25,6 @@ const BASE_ANSWERS: SeasonalPolaroidQuestionnaire = {
   vibe: "cute-cozy",
   personalities: ["foodie"],
   habit: "sunbeam-napper",
-  favoriteTreat: "tuna",
   callName: "mom",
   personalDetail: "Always waits by the window.",
 };
@@ -83,7 +82,6 @@ test("rejects missing required answers", () => {
     vibe: "",
     personalities: [],
     habit: "",
-    favoriteTreat: "",
     callName: "",
   }));
   assert.equal(issueFor(result, "petName")?.code, "required");
@@ -140,13 +138,91 @@ test("rejects living and passed option combinations that are restricted by the t
   assert.equal(issueFor(passed, "vibe")?.code, "restricted");
 });
 
-test("enforces species-dependent habits and treats", () => {
+test("enforces legacy habit species and ignores the retired treat answer", () => {
   const result = validateSeasonalPolaroidRequest(request({
     habit: "binky",
     favoriteTreat: "carrot",
   }));
   assert.equal(issueFor(result, "habit")?.code, "unsupported");
-  assert.equal(issueFor(result, "favoriteTreat")?.code, "unsupported");
+  assert.equal(result.valid, false);
+  if (!result.valid) assert.equal(result.issues.some((issue) => String(issue.field) === "favoriteTreat"), false);
+});
+
+test("keeps legacy occasion option IDs compatible", () => {
+  const accepted = validateSeasonalPolaroidRequest(request({
+    personalities: [],
+    habit: "",
+    personalDetail: "",
+    questionnaireVersion: "occasion-v1",
+    occasionQuestion1: "playful-active",
+    occasionQuestion2: "ordinary-moment",
+  }));
+  assert.equal(accepted.valid, true);
+
+  const rejected = validateSeasonalPolaroidRequest(request({
+    personalities: [],
+    habit: "",
+    questionnaireVersion: "occasion-v1",
+    occasionQuestion1: "seasonalPolaroid.flow.occasion.q1.playful-active",
+    occasionQuestion2: "ordinary-moment",
+  }));
+  assert.equal(issueFor(rejected, "occasionQuestion1")?.code, "unsupported");
+});
+
+test("accepts optional English and Korean free-text occasion answers and rejects overlong text", () => {
+  const empty = validateSeasonalPolaroidRequest(request({
+    personalities: [],
+    habit: "",
+    occasionId: "",
+    occasionQuestion1: "",
+    occasionQuestion2: "",
+    generationMode: "preserve-original-scene",
+    questionnaireVersion: "occasion-v2",
+  }));
+  assert.equal(empty.valid, true);
+  if (empty.valid) {
+    assert.equal(empty.answers.occasionQuestion1, "");
+    assert.equal(empty.answers.occasionQuestion2, "");
+    assert.equal("personalDetail" in empty.answers, false);
+  }
+
+  const written = validateSeasonalPolaroidRequest(request({
+    personalities: [],
+    habit: "",
+    occasionId: "christmas-village",
+    occasionQuestion1: "It felt quiet and warm, like being home.",
+    occasionQuestion2: "함께 보낸 조용한 순간이 오래 기억에 남아요.",
+    questionnaireVersion: "occasion-v2",
+  }));
+  assert.equal(written.valid, true);
+  if (written.valid) assert.equal(written.answers.occasionQuestion2, "함께 보낸 조용한 순간이 오래 기억에 남아요.");
+
+  const tooLong = validateSeasonalPolaroidRequest(request({
+    personalities: [],
+    habit: "",
+    questionnaireVersion: "occasion-v2",
+    occasionQuestion1: "x".repeat(241),
+    occasionQuestion2: "",
+  }));
+  assert.equal(issueFor(tooLong, "occasionQuestion1")?.code, "too_long");
+});
+
+test("Memorial requests remain valid when both optional occasion answers are empty", () => {
+  const result = validateSeasonalPolaroidRequest(request({
+    status: "passed",
+    personalities: [],
+    habit: "",
+    occasionId: "",
+    occasionQuestion1: "",
+    occasionQuestion2: "",
+    questionnaireVersion: "occasion-v2",
+  }));
+  assert.equal(result.valid, true);
+});
+
+test("rejects unknown image generation modes instead of falling back to normal scene generation", () => {
+  const result = validateSeasonalPolaroidRequest(request({ generationMode: "replace-scene" as "preserve-original-scene" }));
+  assert.equal(issueFor(result, "generationMode")?.code, "unsupported");
 });
 
 test("limits personality selections and rejects duplicates", () => {
@@ -160,14 +236,11 @@ test("limits personality selections and rejects duplicates", () => {
 test("enforces text length limits and custom field requirements", () => {
   const result = validateSeasonalPolaroidRequest(request({
     petName: "This name is too long",
-    favoriteTreat: "custom",
-    customTreat: "",
     callName: "by-name",
     customCallName: "",
     personalDetail: "x".repeat(61),
   }));
   assert.equal(issueFor(result, "petName")?.code, "too_long");
-  assert.equal(issueFor(result, "customTreat")?.code, "required");
   assert.equal(issueFor(result, "customCallName")?.code, "required");
   assert.equal(issueFor(result, "personalDetail")?.code, "too_long");
 });

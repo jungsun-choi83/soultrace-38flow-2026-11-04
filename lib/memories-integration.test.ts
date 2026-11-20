@@ -49,10 +49,13 @@ test("editable memory details save story text through the owner and pet scoped p
 });
 
 test("the Memory Polaroid handoff uses an owner-checked private image response and keeps picker fallback", () => {
-  assert.match(petMemory, /polaroidHrefFromArchive\(petId, selectedItem\.entryId, selectedItem\.assets\.find\(\(asset\) => asset\.contentType\.startsWith\("image\/"\)\)\?\.assetId\)/);
+  assert.match(memoriesArchive, /polaroidHrefFromArchive\(pet\.petId, selected\.item\.entryId, selected\.assetId\)/);
+  assert.match(petMemory, /polaroidHref=\{polaroidHrefFromArchive\([\s\S]*item\.entryId[\s\S]*item\.assets\.find\(\(asset\) => asset\.contentType\.startsWith\("image\/"\)\)\?\.assetId/);
   assert.match(polaroidMemoryPhotoRoute, /requireOwnedPet\(petId\)/);
   assert.match(polaroidMemoryPhotoRoute, /isMissingRelationError\(entryError\.code\)/);
   assert.match(polaroidMemoryPhotoRoute, /\.eq\("owner_user_id", access\.user\.id\)[\s\S]*\.eq\("pet_id", access\.pet\.pet_id\)/);
+  assert.match(polaroidMemoryPhotoRoute, /life_archive_photos\?\.find\(\(candidate: \{ photo_id: string \}\) => candidate\.photo_id === assetId\)/);
+  assert.doesNotMatch(polaroidMemoryPhotoRoute, /\.eq\("life_archive_photos\.photo_id", assetId\)/);
   assert.match(polaroidMemoryPhotoRoute, /storage[\s\S]*\.download\(source\.storagePath\)/);
   assert.doesNotMatch(polaroidMemoryPhotoRoute, /createSignedUrl/);
   assert.match(polaroidEntry, /!response\.ok\) return/);

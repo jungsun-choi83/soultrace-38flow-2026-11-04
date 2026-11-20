@@ -19,7 +19,6 @@ const ANSWERS: SeasonalPolaroidPromptAnswers = {
   vibe: "cute-cozy",
   personalities: ["foodie"],
   habit: "sunbeam-napper",
-  favoriteTreat: "tuna",
   callName: "mom",
   personalDetail: "Waits by the window.",
 };

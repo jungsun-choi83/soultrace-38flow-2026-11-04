@@ -568,7 +568,11 @@ export function PetFirstMemory({
                         copy={copy}
                         petName={petName}
                         letterHref={letterHrefForPet(status, petId)}
-                        polaroidHref={polaroidHrefFromArchive(petId)}
+                        polaroidHref={polaroidHrefFromArchive(
+                          petId,
+                          item.entryId,
+                          item.assets.find((asset) => asset.contentType.startsWith("image/"))?.assetId,
+                        )}
                         beamHref={beamSceneHref(petId, item.entryId, item.assets[0]?.assetId)}
                         onRemove={item.deletable ? () => void remove(item.entryId) : undefined}
                         onPatch={item.deletable ? (patch) => void patchMemory(item.entryId, patch) : undefined}

@@ -65,7 +65,6 @@ export async function GET(
       .eq("moment_id", entryId)
       .eq("owner_user_id", access.user.id)
       .eq("pet_id", access.pet.pet_id)
-      .eq("life_archive_photos.photo_id", assetId)
       .maybeSingle();
     if (momentError) {
       console.error("[pet-first] legacy Polaroid source lookup failed", { code: momentError.code });

@@ -28,7 +28,6 @@ const BASE: SeasonalPolaroidPromptAnswers = {
   vibe: "cute-cozy",
   personalities: ["cuddle-bug"],
   habit: "sunbeam-napper",
-  favoriteTreat: "tuna",
   callName: "mom",
 };
 

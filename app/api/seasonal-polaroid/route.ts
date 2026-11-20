@@ -39,6 +39,11 @@ function optionalText(formData: FormData, key: string, maxLength: number): strin
   return text(formData, key, maxLength);
 }
 
+function optionalRawText(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
+}
+
 function readPersonalities(formData: FormData): string[] {
   const values = formData.getAll("personalities").filter((value): value is string => typeof value === "string");
   if (values.length === 1) {
@@ -201,6 +206,8 @@ export async function POST(request: Request): Promise<Response> {
   if (hasNonFileValue(formData, "primaryPhoto", "photo")) {
     return invalidRequest([{ field: "primaryPhoto", code: "photo_required" }]);
   }
+  const generationMode = optionalText(formData, "generationMode", 32).trim();
+  const questionnaireVersion = optionalText(formData, "questionnaireVersion", 32);
   const answers: SeasonalPolaroidQuestionnaire = {
     themeId: text(formData, "themeId", 32),
     occasionId: optionalText(formData, "occasionId", 64),
@@ -214,12 +221,14 @@ export async function POST(request: Request): Promise<Response> {
     personalities: readPersonalities(formData),
     habit: text(formData, "habit", 64),
     customHabit: optionalText(formData, "customHabit", 60),
-    favoriteTreat: text(formData, "favoriteTreat", 64),
-    customTreat: optionalText(formData, "customTreat", 60),
     callName: text(formData, "callName", 64),
     customCallName: optionalText(formData, "customCallName", 40),
-    personalDetail: optionalText(formData, "personalDetail", 60),
+    ...(questionnaireVersion !== "occasion-v2" ? { personalDetail: optionalText(formData, "personalDetail", 60) } : {}),
+    occasionQuestion1: optionalRawText(formData, "occasionQuestion1"),
+    occasionQuestion2: optionalRawText(formData, "occasionQuestion2"),
+    ...(questionnaireVersion === "occasion-v1" || questionnaireVersion === "occasion-v2" ? { questionnaireVersion } : {}),
     generationNonce: optionalText(formData, "generationNonce", 128),
+    ...(generationMode ? { generationMode: generationMode as "preserve-original-scene" } : {}),
   };
   if (selectedPet) {
     // Canonical identity/status always come from the owned pet row. Missing

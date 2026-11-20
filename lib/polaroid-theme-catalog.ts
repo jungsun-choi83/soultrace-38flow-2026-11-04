@@ -275,6 +275,15 @@ const ADOPTION_DAY_OCCASION: PolaroidOccasionItem = {
   implemented: true,
 };
 
+const MY_PHOTO_BACKGROUND_OCCASION: PolaroidOccasionItem = {
+  id: "preserve-original-scene",
+  titleKo: "내가 찍은 사진과 배경",
+  titleEn: "My Photo & Background",
+  hintKo: "내 사진을 선택한 화풍으로 변환하기",
+  hintEn: "Transform my photo into the chosen art style",
+  implemented: true,
+};
+
 /**
  * Signed-in polaroid special days match the home free-trial plates,
  * plus birthday (already in the trial set) and adoption day.
@@ -292,6 +301,7 @@ export const POLAROID_OCCASION_GROUPS: readonly PolaroidOccasionGroup[] = [
       { id: "birthday-room", titleKo: "생일 파티 룸", titleEn: "Birthday party room", hintKo: "오늘만큼은 내가 주인공인 생일", hintEn: "A birthday room where this pet is the star", implemented: true },
       { id: "first-snow-street", titleKo: "첫눈 오는 거리", titleEn: "First-snow street", hintKo: "첫눈이 내리는 포근한 거리", hintEn: "A cozy street in the first snow", implemented: true },
       ADOPTION_DAY_OCCASION,
+      MY_PHOTO_BACKGROUND_OCCASION,
     ],
   },
 ];
