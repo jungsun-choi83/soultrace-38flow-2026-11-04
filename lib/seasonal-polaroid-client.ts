@@ -66,7 +66,9 @@ export function buildSeasonalPolaroidFormData(
   formData.append("primaryPhoto", primaryPhoto, primaryPhoto.name);
 
   formData.append("themeId", String(answers.themeId));
+  if (answers.questionnaireVersion) formData.append("questionnaireVersion", answers.questionnaireVersion);
   if (answers.occasionId) formData.append("occasionId", String(answers.occasionId));
+  if (answers.generationMode) formData.append("generationMode", String(answers.generationMode));
   formData.append("locale", String(answers.locale));
   formData.append("petName", answers.petName);
   if (petId) formData.append("petId", petId);
@@ -78,11 +80,10 @@ export function buildSeasonalPolaroidFormData(
   formData.append("personalities", JSON.stringify(answers.personalities));
   formData.append("habit", answers.habit);
   formData.append("customHabit", answers.customHabit ?? "");
-  formData.append("favoriteTreat", answers.favoriteTreat);
-  formData.append("customTreat", answers.customTreat ?? "");
   formData.append("callName", answers.callName);
+  formData.append("occasionQuestion1", String(answers.occasionQuestion1 ?? ""));
+  formData.append("occasionQuestion2", String(answers.occasionQuestion2 ?? ""));
   formData.append("customCallName", answers.customCallName ?? "");
-  formData.append("personalDetail", answers.personalDetail ?? "");
   if (answers.generationNonce) formData.append("generationNonce", answers.generationNonce);
   return formData;
 }

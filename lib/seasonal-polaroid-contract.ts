@@ -13,6 +13,7 @@ import {
   SEASONAL_POLAROID_PHOTO_MAX_BYTES,
   validateSeasonalPolaroidPhoto,
 } from "./seasonal-polaroid-photo.ts";
+import { getOccasionQuestions } from "./occasion-questions.ts";
 
 export type SeasonalPolaroidThemeId = PolaroidThemeId;
 export type SeasonalPolaroidLocale = Locale;
@@ -27,15 +28,22 @@ export type SeasonalPolaroidQuestionnaire = {
   costume: string;
   scene: string;
   vibe: string;
+  /** Legacy caption context retained so queued v1 jobs remain readable. */
   personalities: string[];
   habit: string;
   customHabit?: string;
-  favoriteTreat: string;
+  /** Legacy answer fields are accepted when reading jobs admitted by older clients. */
+  favoriteTreat?: string;
   customTreat?: string;
   callName: string;
   customCallName?: string;
+  /** Legacy caption context retained for queued v1 jobs. */
   personalDetail?: string;
+  occasionQuestion1?: string;
+  occasionQuestion2?: string;
+  questionnaireVersion?: "occasion-v1" | "occasion-v2";
   generationNonce?: string;
+  generationMode?: "preserve-original-scene";
 };
 
 export type SeasonalPolaroidRequest = {
@@ -58,6 +66,7 @@ export type SeasonalPolaroidMemo = {
 export type SeasonalPolaroidGenerationMetadata = {
   themeId: SeasonalPolaroidThemeId;
   occasionId: string | null;
+  generationMode?: "preserve-original-scene";
   imageModel: string;
   textModel: string | null;
   generatedAt: string;
@@ -100,12 +109,13 @@ export type SeasonalPolaroidValidationField =
   | "personalities"
   | "habit"
   | "customHabit"
-  | "favoriteTreat"
-  | "customTreat"
   | "callName"
   | "customCallName"
   | "personalDetail"
+  | "occasionQuestion1"
+  | "occasionQuestion2"
   | "generationNonce"
+  | "generationMode"
   | "primaryPhoto"
   // Kept for validating/cleaning legacy queued attempts; new requests expose
   // only the primary photo.
@@ -146,6 +156,7 @@ const MAX_CUSTOM_HABIT_LENGTH = 60;
 const MAX_CALL_NAME_LENGTH = 40;
 const MAX_PERSONAL_DETAIL_LENGTH = 60;
 const MAX_GENERATION_NONCE_LENGTH = 128;
+export const MAX_OCCASION_ANSWER_LENGTH = 240;
 
 function hasOption(options: readonly SeasonalOption[], id: string): boolean {
   return options.some((item) => item.id === id);
@@ -240,22 +251,20 @@ export function validateSeasonalPolaroidRequest(
   }
 
   const personalities = Array.isArray(answers.personalities) ? answers.personalities : [];
-  if (personalities.length < 1) addIssue(issues, "personalities", "required");
+  const newQuestionnaire = answers.questionnaireVersion === "occasion-v1" || answers.questionnaireVersion === "occasion-v2";
+  const freeTextQuestionnaire = answers.questionnaireVersion === "occasion-v2";
+  const hasOccasionAnswers = Boolean(String(answers.occasionQuestion1 ?? "").trim() || String(answers.occasionQuestion2 ?? "").trim());
+  if (personalities.length < 1 && !newQuestionnaire && !hasOccasionAnswers) addIssue(issues, "personalities", "required");
   if (personalities.length > 2) addIssue(issues, "personalities", "too_many");
   if (new Set(personalities).size !== personalities.length) addIssue(issues, "personalities", "duplicate");
   if (theme && personalities.some((id) => !hasOption(theme.personalities, String(id)))) addIssue(issues, "personalities", "unsupported");
 
-  if (theme && SPECIES.includes(species as PolaroidSpecies)) {
+  if (theme && SPECIES.includes(species as PolaroidSpecies) && String(answers.habit ?? "")) {
     const speciesOptions = theme.habitsBySpecies[species as PolaroidSpecies];
     const habit = String(answers.habit ?? "");
     if (!habit) addIssue(issues, "habit", "required");
     else if (habit !== "custom" && !hasOption(speciesOptions, habit)) addIssue(issues, "habit", "unsupported");
     if (habit === "custom" && !String(answers.customHabit ?? "").trim()) addIssue(issues, "customHabit", "required");
-    const treatOptions = theme.treatsBySpecies[species as PolaroidSpecies];
-    const favoriteTreat = String(answers.favoriteTreat ?? "");
-    if (!favoriteTreat) addIssue(issues, "favoriteTreat", "required");
-    else if (!hasOption(treatOptions, favoriteTreat)) addIssue(issues, "favoriteTreat", "unsupported");
-    if (favoriteTreat === "custom" && !String(answers.customTreat ?? "").trim()) addIssue(issues, "customTreat", "required");
   }
 
   // "Something else" ("custom") was retired from the questionnaire. Drafts and
@@ -264,22 +273,45 @@ export function validateSeasonalPolaroidRequest(
   if (!callName) addIssue(issues, "callName", "required");
   else if (!theme || !hasOption(theme.callNames, callName)) addIssue(issues, "callName", "unsupported");
   if (callName === "by-name" && !String(answers.customCallName ?? "").trim()) addIssue(issues, "customCallName", "required");
-  if (String(answers.customTreat ?? "").length > MAX_CUSTOM_TREAT_LENGTH) addIssue(issues, "customTreat", "too_long");
   if (String(answers.customHabit ?? "").length > MAX_CUSTOM_HABIT_LENGTH) addIssue(issues, "customHabit", "too_long");
   if (String(answers.customCallName ?? "").length > MAX_CALL_NAME_LENGTH) addIssue(issues, "customCallName", "too_long");
-  if (String(answers.personalDetail ?? "").length > MAX_PERSONAL_DETAIL_LENGTH) addIssue(issues, "personalDetail", "too_long");
+  if (!freeTextQuestionnaire && String(answers.personalDetail ?? "").length > MAX_PERSONAL_DETAIL_LENGTH) addIssue(issues, "personalDetail", "too_long");
+
+  const questions = getOccasionQuestions(occasionId || undefined, String(answers.generationMode ?? "") || undefined);
+  for (const [field, question] of [["occasionQuestion1", "question1"], ["occasionQuestion2", "question2"]] as const) {
+    const rawAnswer = answers[field];
+    if (rawAnswer !== undefined && rawAnswer !== null && typeof rawAnswer !== "string") {
+      addIssue(issues, field, "unsupported");
+      continue;
+    }
+    const answer = typeof rawAnswer === "string" ? rawAnswer.trim() : "";
+    if (typeof rawAnswer === "string" && rawAnswer.length > MAX_OCCASION_ANSWER_LENGTH) addIssue(issues, field, "too_long");
+    if (answers.questionnaireVersion === "occasion-v1") {
+      if (questions && !answer) addIssue(issues, field, "required");
+      if (answer && !questions?.[question].options.some((option) => option.id === answer)) addIssue(issues, field, "unsupported");
+    } else if (!freeTextQuestionnaire && answer && !questions?.[question].options.some((option) => option.id === answer)) {
+      addIssue(issues, field, "unsupported");
+    }
+  }
   if (String(answers.generationNonce ?? "").length > MAX_GENERATION_NONCE_LENGTH) {
     addIssue(issues, "generationNonce", "too_long");
+  }
+
+  const generationMode = String(answers.generationMode ?? "").trim();
+  if (generationMode && generationMode !== "preserve-original-scene") {
+    addIssue(issues, "generationMode", "unsupported");
   }
 
   validatePhoto(request.primaryPhoto, "primaryPhoto", issues);
 
   if (issues.length > 0) return { valid: false, issues };
+  const normalizedAnswers = { ...answers };
+  if (freeTextQuestionnaire) delete normalizedAnswers.personalDetail;
   return {
     valid: true,
     theme: theme!,
     answers: {
-      ...answers,
+      ...normalizedAnswers,
       themeId: answers.themeId,
       occasionId,
       locale: answers.locale,
@@ -287,12 +319,18 @@ export function validateSeasonalPolaroidRequest(
       species,
       status,
       personalities: personalities.map(String),
+      habit: String(answers.habit ?? ""),
       callName,
       customHabit: String(answers.customHabit ?? "").trim(),
-      customTreat: String(answers.customTreat ?? "").trim(),
       customCallName: String(answers.customCallName ?? "").trim(),
-      personalDetail: String(answers.personalDetail ?? "").trim(),
+      ...(!freeTextQuestionnaire ? { personalDetail: String(answers.personalDetail ?? "").trim() } : {}),
+      occasionQuestion1: String(answers.occasionQuestion1 ?? "").trim(),
+      occasionQuestion2: String(answers.occasionQuestion2 ?? "").trim(),
+      ...(answers.questionnaireVersion === "occasion-v1" || answers.questionnaireVersion === "occasion-v2"
+        ? { questionnaireVersion: answers.questionnaireVersion }
+        : {}),
       generationNonce: String(answers.generationNonce ?? "").trim(),
+      generationMode: generationMode === "preserve-original-scene" ? "preserve-original-scene" : undefined,
     },
   };
 }

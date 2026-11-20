@@ -340,9 +340,8 @@
         "callNameLabel": "아이가 당신을 뭐라고 불렀나요?",
         "callNameLabelPassed": "아이와 함께할 때, 아이는 당신을 뭐라고 불렀나요?",
         "callNameCustomPlaceholder": "아이가 부르던 이름",
-        "personalLabel": "나만 아는 디테일 · 선택",
-        "personalPlaceholder": "아이답게 느껴지는 작은 디테일",
-        "characterCount": "%COUNT% / 60"
+        "questionAnswerPlaceholder": "마음을 편하게 적어 주세요",
+        "questionAnswerOptional": "선택 사항"
       },
       "preview": {
         "label": "실시간 미리보기",
@@ -727,7 +726,7 @@
         "steps": {
           "meet": "소개",
           "scene": "장면",
-          "personality": "아이",
+          "questions": "마음 나누기",
           "preview": "미리보기"
         },
         "pageTitle": "우리 아이의 특별한 한 장",

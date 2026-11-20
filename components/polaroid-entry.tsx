@@ -61,7 +61,8 @@ import {
   type SeasonalPolaroidGenerationSession,
   type SeasonalPolaroidPreviewResult,
 } from "@/lib/seasonal-polaroid-client";
-import type { SeasonalPolaroidQuestionnaire, SeasonalPolaroidResult } from "@/lib/seasonal-polaroid-contract";
+import { getOccasionQuestions } from "@/lib/occasion-questions";
+import { MAX_OCCASION_ANSWER_LENGTH, type SeasonalPolaroidQuestionnaire, type SeasonalPolaroidResult } from "@/lib/seasonal-polaroid-contract";
 import { clearPendingResultSave, readPendingResultSave, writePendingResultSave } from "@/lib/pending-result-save";
 import { SEASONAL_POLAROID_FRAME_BASE_CLASS, SeasonalPolaroidFrame } from "@/components/seasonal-polaroid-frame";
 import { exportSeasonalPolaroidPng } from "@/lib/seasonal-polaroid-export";
@@ -71,12 +72,13 @@ import Link from "next/link";
 
 type Step = 1 | 2 | 3 | 4;
 type WhisperTrigger =
-  | { kind: "default" | "photo" | "habit" | "treat" | "callName" }
+  | { kind: "default" | "photo" | "habit" | "callName" }
   | { kind: "costume" | "scene" | "vibe" | "personality"; id: string };
 
 type PolaroidAnswers = {
   themeId: string;
   occasionId: string;
+  generationMode?: "preserve-original-scene";
   petName: string;
   species: PolaroidSpecies | "";
   status: PolaroidStatus | "";
@@ -86,14 +88,16 @@ type PolaroidAnswers = {
   personalities: string[];
   habit: string;
   customHabit: string;
-  favoriteTreat: string;
-  customTreat: string;
   callName: string;
   customCallName: string;
-  personalDetail: string;
+  occasionQuestion1: string;
+  occasionQuestion2: string;
 };
 
-type SavedPolaroidDraft = Partial<PolaroidAnswers> & { sceneChoiceVersion?: number };
+type SavedPolaroidDraft = Partial<PolaroidAnswers> & {
+  sceneChoiceVersion?: number;
+  questionnaireVersion?: "occasion-v1" | "occasion-v2";
+};
 
 type LocalPhoto = {
   id: string;
@@ -130,6 +134,7 @@ function polaroidStatusFromEntry(branch: string | null | undefined): PolaroidSta
 const EMPTY_ANSWERS: PolaroidAnswers = {
   themeId: "",
   occasionId: "",
+  generationMode: undefined,
   petName: "",
   species: "",
   status: "",
@@ -139,14 +144,13 @@ const EMPTY_ANSWERS: PolaroidAnswers = {
   personalities: [],
   habit: "",
   customHabit: "",
-  favoriteTreat: "",
-  customTreat: "",
   callName: "",
   customCallName: "",
-  personalDetail: "",
+  occasionQuestion1: "",
+  occasionQuestion2: "",
 };
 
-const STEP_IDS = ["meet", "scene", "personality", "preview"] as const;
+const STEP_IDS = ["meet", "scene", "questions", "preview"] as const;
 const SPECIES_OPTIONS: readonly SeasonalOption[] = [
   { id: "dog", emoji: "🐶", labelKey: "options.species.dog" },
   { id: "cat", emoji: "🐱", labelKey: "options.species.cat" },
@@ -155,12 +159,6 @@ const SPECIES_OPTIONS: readonly SeasonalOption[] = [
   { id: "bird", emoji: "🐦", labelKey: "options.species.bird" },
   { id: "other", emoji: "🐾", labelKey: "options.species.other" },
 ];
-
-const CUSTOM_HABIT_OPTION: SeasonalOption = {
-  id: "custom",
-  emoji: "✦",
-  labelKey: "options.habits.custom",
-};
 
 function fieldClass(lang: Locale, invalid = false) {
   return `w-full rounded-xl border bg-[#e7f0f4] px-4 py-3.5 text-base font-extralight text-[#1e4d3a] outline-none transition placeholder:text-[#5d7c88] focus:border-[#55603a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#55603a] ${
@@ -234,6 +232,7 @@ function restoreDraft(
       && isPolaroidOccasionAdmitted(draft.occasionId, flags)
       ? draft.occasionId
       : "",
+    generationMode: draft.generationMode === "preserve-original-scene" ? "preserve-original-scene" : undefined,
     petName: typeof draft.petName === "string" ? draft.petName.slice(0, 12) : "",
     species: ["dog", "cat", "rabbit", "hamster", "bird", "other"].includes(String(draft.species))
       ? draft.species as PolaroidSpecies
@@ -247,12 +246,17 @@ function restoreDraft(
       : [],
     habit: typeof draft.habit === "string" ? draft.habit : "",
     customHabit: typeof draft.customHabit === "string" ? draft.customHabit.slice(0, 60) : "",
-    favoriteTreat: typeof draft.favoriteTreat === "string" ? draft.favoriteTreat : "",
-    customTreat: typeof draft.customTreat === "string" ? draft.customTreat.slice(0, 60) : "",
     // "Something else" was retired; a draft that still carries it means "A name" with the same typed name.
     callName: typeof draft.callName === "string" ? (draft.callName === "custom" ? "by-name" : draft.callName) : "",
     customCallName: typeof draft.customCallName === "string" ? draft.customCallName.slice(0, 40) : "",
-    personalDetail: typeof draft.personalDetail === "string" ? draft.personalDetail.slice(0, 60) : "",
+    // Previous drafts stored these as option IDs; only restore responses
+    // explicitly saved by the free-text questionnaire.
+    occasionQuestion1: draft.questionnaireVersion === "occasion-v2" && typeof draft.occasionQuestion1 === "string"
+      ? draft.occasionQuestion1.slice(0, MAX_OCCASION_ANSWER_LENGTH)
+      : "",
+    occasionQuestion2: draft.questionnaireVersion === "occasion-v2" && typeof draft.occasionQuestion2 === "string"
+      ? draft.occasionQuestion2.slice(0, MAX_OCCASION_ANSWER_LENGTH)
+      : "",
   };
 
   const restoredTheme = polaroidThemeById(restored.occasionId || restored.themeId || "halloween") ?? polaroidThemeById("halloween")!;
@@ -263,13 +267,8 @@ function restoreDraft(
   }
   if (restored.species) {
     const habits = restoredTheme.habitsBySpecies[restored.species];
-    const treats = restoredTheme.treatsBySpecies[restored.species];
     if (restored.habit && restored.habit !== "custom" && !habits.some((item) => item.id === restored.habit)) restored.habit = "";
     if (restored.habit !== "custom") restored.customHabit = "";
-    if (restored.favoriteTreat && !treats.some((item) => item.id === restored.favoriteTreat)) {
-      restored.favoriteTreat = "";
-      restored.customTreat = "";
-    }
   }
   if (restored.callName && !restoredTheme.callNames.some((item) => item.id === restored.callName)) {
     restored.callName = "";
@@ -543,7 +542,7 @@ export function PolaroidEntry({
   useEffect(() => {
     if (!hydrated || (initialPetId && !selectedPet)) return;
     try {
-      window.sessionStorage.setItem(seasonalPolaroidDraftKey(selectedPet?.petId), JSON.stringify({ ...answers, sceneChoiceVersion: 2 }));
+      window.sessionStorage.setItem(seasonalPolaroidDraftKey(selectedPet?.petId), JSON.stringify({ ...answers, sceneChoiceVersion: 2, questionnaireVersion: "occasion-v2" }));
     } catch {
       // Draft restoration is an enhancement; private browsing may disable it.
     }
@@ -742,16 +741,12 @@ export function PolaroidEntry({
 
   const label = (option: SeasonalOption) => t(optionPath(option));
   const status = answers.status;
-  const availableHabits = answers.species ? theme.habitsBySpecies[answers.species] : [];
-  const availableTreats = answers.species ? theme.treatsBySpecies[answers.species] : [];
-  const habitOptions = [...availableHabits, CUSTOM_HABIT_OPTION];
 
   const whisperRule = useMemo(() => {
     if (!status) return theme.whispers.default;
     if (whisperTrigger.kind === "default") return theme.whispers.default;
     if (whisperTrigger.kind === "photo") return theme.whispers.photo;
     if (whisperTrigger.kind === "habit") return theme.whispers.habit;
-    if (whisperTrigger.kind === "treat") return theme.whispers.treat;
     if (whisperTrigger.kind === "callName") return theme.whispers.callName;
     if (!("id" in whisperTrigger)) return theme.whispers.default;
     const list = theme.whispers[whisperTrigger.kind];
@@ -770,17 +765,6 @@ export function PolaroidEntry({
     isArtStyleFlow ? undefined : answers.costume ? optionById(optionTheme.costumes, answers.costume) : undefined,
     isArtStyleFlow ? undefined : answers.scene ? optionById(optionTheme.scenes, answers.scene) : undefined,
     isArtStyleFlow ? undefined : answers.vibe ? optionById(optionTheme.vibes, answers.vibe) : undefined,
-    ...answers.personalities.map((id) => optionById(theme.personalities, id)),
-    answers.habit && answers.habit !== "custom"
-      ? optionById(availableHabits, answers.habit)
-      : answers.customHabit
-        ? CUSTOM_HABIT_OPTION
-        : undefined,
-    answers.favoriteTreat && answers.favoriteTreat !== "custom"
-      ? optionById(availableTreats, answers.favoriteTreat)
-      : answers.customTreat
-        ? { id: "custom-treat", emoji: "✍️", labelKey: "options.treats.custom" }
-        : undefined,
     answers.callName && answers.callName !== "by-name"
       ? optionById(theme.callNames, answers.callName)
       : answers.customCallName
@@ -805,14 +789,21 @@ export function PolaroidEntry({
 
   const updateOccasion = (nextOccasionId: string) => {
     setAnswers((current) => {
-      const cleared = current.occasionId === nextOccasionId;
+      const isPreserveOriginal = nextOccasionId === "preserve-original-scene";
+      const cleared = isPreserveOriginal
+        ? current.generationMode === "preserve-original-scene"
+        : current.occasionId === nextOccasionId && current.generationMode !== "preserve-original-scene";
       const occasionId = cleared ? "" : nextOccasionId;
+      const generationMode = cleared || !isPreserveOriginal ? undefined : "preserve-original-scene";
       return {
         ...current,
-        occasionId,
+        occasionId: isPreserveOriginal ? "" : occasionId,
+        generationMode,
         costume: "",
         scene: "",
         vibe: "",
+        occasionQuestion1: "",
+        occasionQuestion2: "",
       };
     });
     setError(null);
@@ -821,14 +812,11 @@ export function PolaroidEntry({
 
   const updateSpecies = (nextSpecies: PolaroidSpecies) => {
     const nextHabits = theme.habitsBySpecies[nextSpecies];
-    const nextTreats = theme.treatsBySpecies[nextSpecies];
     setAnswers((current) => ({
       ...current,
       species: nextSpecies,
       habit: current.habit === "custom" || nextHabits.some((item) => item.id === current.habit) ? current.habit : "",
       customHabit: current.habit === "custom" ? current.customHabit : "",
-      favoriteTreat: nextTreats.some((item) => item.id === current.favoriteTreat) ? current.favoriteTreat : "",
-      customTreat: current.favoriteTreat === "custom" && nextTreats.some((item) => item.id === "custom") ? current.customTreat : "",
     }));
     setError(null);
   };
@@ -921,10 +909,6 @@ export function PolaroidEntry({
       if (yearRoundEnabled && !isEverydayPolaroidArtStyle(answers.themeId)) return t("seasonalPolaroid.flow.yearRound.themeRequired");
     }
     if (currentStep === 3) {
-      if (answers.personalities.length < 1) return t("seasonalPolaroid.flow.validation.personality");
-      if (!answers.habit) return t("seasonalPolaroid.flow.validation.habit");
-      if (answers.habit === "custom" && !answers.customHabit.trim()) return t("seasonalPolaroid.flow.validation.habitCustom");
-      if (!answers.favoriteTreat || (answers.favoriteTreat === "custom" && !answers.customTreat.trim())) return t("seasonalPolaroid.flow.validation.treat");
       if (!answers.callName) return t("seasonalPolaroid.flow.validation.callName");
       if (answers.callName === "by-name" && !answers.customCallName.trim()) return t("seasonalPolaroid.flow.validation.callNameCustom");
     }
@@ -1092,14 +1076,15 @@ export function PolaroidEntry({
       costume: sceneAnswers.costume,
       scene: sceneAnswers.scene,
       vibe: sceneAnswers.vibe,
-      personalities: answers.personalities,
-      habit: answers.habit,
-      customHabit: answers.customHabit.trim(),
-      favoriteTreat: answers.favoriteTreat,
-      customTreat: answers.customTreat.trim(),
+      personalities: [],
+      habit: "",
+      customHabit: "",
       callName: answers.callName,
       customCallName: answers.customCallName.trim(),
-      personalDetail: answers.personalDetail.trim(),
+      occasionQuestion1: answers.occasionQuestion1.trim(),
+      occasionQuestion2: answers.occasionQuestion2.trim(),
+      questionnaireVersion: "occasion-v2",
+      generationMode: answers.generationMode,
       // A regeneration must be a new idempotent request. The initial
       // submission intentionally leaves this empty so safe retries reuse the
       // same job, while each explicit regeneration gets a fresh job/result.
@@ -1577,8 +1562,9 @@ export function PolaroidEntry({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       {POLAROID_OCCASION_GROUPS.flatMap((group) => group.items).map((item) => {
-                        const ready = item.implemented && isPolaroidOccasionAdmitted(item.id, themeFlags);
-                        const selected = answers.occasionId === item.id;
+                        const isPreserveOriginal = item.id === "preserve-original-scene";
+                        const ready = item.implemented && (isPreserveOriginal || isPolaroidOccasionAdmitted(item.id, themeFlags));
+                        const selected = isPreserveOriginal ? answers.generationMode === "preserve-original-scene" : answers.occasionId === item.id;
                         return (
                           <button
                             key={item.id}
@@ -1600,32 +1586,31 @@ export function PolaroidEntry({
 
               {step === 3 ? (
                 <div className="space-y-8">
-                  <div>
-                    <div className="mb-3 flex items-center justify-between gap-3"><p className={`text-sm text-[#1e4d3a] ${bodyFont}`}>{t("seasonalPolaroid.flow.screen5.personalityLabel")}</p><span className={`text-xs text-[#3e6274] ${bodyFont}`}>{t("seasonalPolaroid.flow.personalityCount").replace("%COUNT%", String(answers.personalities.length))}</span></div>
-                    <div className="grid min-w-0 grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2">
-                      {theme.personalities.map((item) => <ChoiceButton key={item.id} option={item} label={label(item)} selected={answers.personalities.includes(item.id)} onClick={() => {
-                        const selected = answers.personalities.includes(item.id);
-                        if (!selected && answers.personalities.length >= 2) return;
-                        const personalities = selected ? answers.personalities.filter((id) => id !== item.id) : [...answers.personalities, item.id];
-                        updateAnswers({ personalities }, { kind: "personality", id: item.id });
-                      }} bodyFont={bodyFont} multi />)}
-                    </div>
-                  </div>
-                  <OptionGroup label={t("seasonalPolaroid.flow.screen5.habitLabel")} options={habitOptions} selected={answers.habit} onSelect={(id) => updateAnswers({ habit: id, ...(id === "custom" ? {} : { customHabit: "" }) }, { kind: "habit" })} bodyFont={bodyFont} />
-                  {answers.habit === "custom" ? <input type="text" maxLength={60} value={answers.customHabit} onChange={(event) => updateAnswers({ customHabit: event.target.value.slice(0, 60) })} placeholder={t("seasonalPolaroid.flow.screen5.habitCustomPlaceholder")} className={fieldClass(lang)} /> : null}
-                  <div>
-                    <p className={`mb-3 text-sm text-[#1e4d3a] ${bodyFont}`}>{t("seasonalPolaroid.flow.screen6.treatLabel")}</p>
-                    <div className="grid min-w-0 grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2">
-                      {availableTreats.map((item) => <ChoiceButton key={item.id} option={item} label={label(item)} selected={answers.favoriteTreat === item.id} onClick={() => updateAnswers({ favoriteTreat: item.id }, { kind: "treat" })} bodyFont={bodyFont} />)}
-                    </div>
-                    {answers.favoriteTreat === "custom" ? <input type="text" maxLength={60} value={answers.customTreat} onChange={(event) => updateAnswers({ customTreat: event.target.value.slice(0, 60) })} placeholder={t("seasonalPolaroid.flow.screen6.treatCustomPlaceholder")} className={`mt-3 ${fieldClass(lang)}`} /> : null}
-                  </div>
+                  {(() => {
+                    const questionsConfig = getOccasionQuestions(answers.occasionId, answers.generationMode, answers.status || undefined);
+                    if (questionsConfig) {
+                      const petName = answers.petName.trim() || (lang === "ko" ? "반려동물" : "your pet");
+                      const question1 = (lang === "ko" ? questionsConfig.question1.titleKo : questionsConfig.question1.titleEn).replaceAll("%PET_NAME%", petName);
+                      const question2 = (lang === "ko" ? questionsConfig.question2.titleKo : questionsConfig.question2.titleEn).replaceAll("%PET_NAME%", petName);
+                      return (
+                        <>
+                          <div className="space-y-2">
+                            <label htmlFor="seasonal-question-1" className={`block text-sm leading-6 text-[#1e4d3a] ${bodyFont}`}>{question1}</label>
+                            <textarea id="seasonal-question-1" aria-describedby="seasonal-question-1-help" maxLength={MAX_OCCASION_ANSWER_LENGTH} rows={2} value={answers.occasionQuestion1} onChange={(event) => updateAnswers({ occasionQuestion1: event.target.value.slice(0, MAX_OCCASION_ANSWER_LENGTH) })} placeholder={t("seasonalPolaroid.flow.screen6.questionAnswerPlaceholder")} className={`resize-y ${fieldClass(lang)}`} />
+                            <p id="seasonal-question-1-help" className={`text-xs leading-5 text-[#5d7c88] ${bodyFont}`}>{t("seasonalPolaroid.flow.screen6.questionAnswerOptional")} · {answers.occasionQuestion1.length}/{MAX_OCCASION_ANSWER_LENGTH}</p>
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor="seasonal-question-2" className={`block text-sm leading-6 text-[#1e4d3a] ${bodyFont}`}>{question2}</label>
+                            <textarea id="seasonal-question-2" aria-describedby="seasonal-question-2-help" maxLength={MAX_OCCASION_ANSWER_LENGTH} rows={2} value={answers.occasionQuestion2} onChange={(event) => updateAnswers({ occasionQuestion2: event.target.value.slice(0, MAX_OCCASION_ANSWER_LENGTH) })} placeholder={t("seasonalPolaroid.flow.screen6.questionAnswerPlaceholder")} className={`resize-y ${fieldClass(lang)}`} />
+                            <p id="seasonal-question-2-help" className={`text-xs leading-5 text-[#5d7c88] ${bodyFont}`}>{t("seasonalPolaroid.flow.screen6.questionAnswerOptional")} · {answers.occasionQuestion2.length}/{MAX_OCCASION_ANSWER_LENGTH}</p>
+                          </div>
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
                   <OptionGroup label={t(status === "passed" ? "seasonalPolaroid.flow.screen6.callNameLabelPassed" : "seasonalPolaroid.flow.screen6.callNameLabel")} options={theme.callNames} selected={answers.callName} onSelect={(id) => updateAnswers({ callName: id }, { kind: "callName" })} bodyFont={bodyFont} />
                   {answers.callName === "by-name" ? <input type="text" maxLength={40} value={answers.customCallName} onChange={(event) => updateAnswers({ customCallName: event.target.value.slice(0, 40) })} placeholder={t("seasonalPolaroid.flow.screen6.callNameCustomPlaceholder")} className={fieldClass(lang)} /> : null}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3"><label htmlFor="seasonal-detail" className={`text-sm text-[#1e4d3a] ${bodyFont}`}>{t("seasonalPolaroid.flow.screen6.personalLabel")}</label><span className={`text-xs text-[#8F8578] ${bodyFont}`}>{t("seasonalPolaroid.flow.screen6.characterCount").replace("%COUNT%", String(answers.personalDetail.length))}</span></div>
-                    <textarea id="seasonal-detail" maxLength={60} rows={3} value={answers.personalDetail} onChange={(event) => updateAnswers({ personalDetail: event.target.value.slice(0, 60) })} placeholder={t("seasonalPolaroid.flow.screen6.personalPlaceholder")} className={`resize-none ${fieldClass(lang)}`} />
-                  </div>
                 </div>
               ) : null}
 
@@ -1826,12 +1811,14 @@ function OptionGroup({
   selected,
   onSelect,
   bodyFont,
+  labelForOption,
 }: {
   label: string;
   options: readonly SeasonalOption[];
   selected: string;
   onSelect: (id: string) => void;
   bodyFont: string;
+  labelForOption?: (option: SeasonalOption) => string;
 }) {
   const { t } = useLocale();
 
@@ -1839,7 +1826,7 @@ function OptionGroup({
     <div>
       {label ? <p className={`mb-3 text-sm text-[#3e6554] ${bodyFont}`}>{label}</p> : null}
       <div className="grid min-w-0 grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2">
-        {options.map((item) => <ChoiceButton key={item.id} option={item} label={t(optionPath(item))} selected={selected === item.id} onClick={() => onSelect(item.id)} bodyFont={bodyFont} />)}
+        {options.map((item) => <ChoiceButton key={item.id} option={item} label={labelForOption ? labelForOption(item) : t(optionPath(item))} selected={selected === item.id} onClick={() => onSelect(item.id)} bodyFont={bodyFont} />)}
       </div>
     </div>
   );

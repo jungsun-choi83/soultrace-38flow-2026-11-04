@@ -55,7 +55,7 @@ test("the pet Memories route scopes by the selected owner pet and separates Albu
   assert.match(memory, /view === "record"/);
   assert.match(memory, /view === "detail"/);
   assert.match(memory, /letterHrefForPet\(status, petId\)/);
-  assert.match(memory, /polaroidHrefFromArchive\(petId, selectedItem\.entryId, selectedItem\.assets\.find/);
+  assert.match(memory, /polaroidHref=\{polaroidHrefFromArchive\([\s\S]*item\.entryId[\s\S]*item\.assets\.find/);
   assert.match(memory, /beamSceneHref\(petId/);
   assert.match(memory, /onRemove=\{selectedItem\.deletable/);
   assert.match(memory, /onPatch=\{selectedItem\.deletable/);

@@ -11,13 +11,13 @@ import {
 } from "./visual-memory-ai.ts";
 import {
   buildSeasonalPolaroidImagePrompt,
+  buildPreserveOriginalSceneImagePrompt,
   buildSeasonalPolaroidMemoMessages,
   buildSeasonalPolaroidMemoVisionMessages,
   fallbackSeasonalPolaroidMemo,
-  resolvedSeasonalPolaroidMemoCallName,
+  resolvedCallName,
   validateSeasonalPolaroidMemo,
   type SeasonalPolaroidMemoImage,
-  type SeasonalPolaroidMemoRetryReason,
   type SeasonalPolaroidPromptAnswers,
 } from "./seasonal-polaroid-prompts.ts";
 import type { SeasonalPolaroidMemo } from "./seasonal-polaroid-contract.ts";
@@ -31,6 +31,8 @@ export type SeasonalPolaroidImageInput = {
   primary: PetImageReference;
   /** Free-trial scene plate, when the occasion matches a home free-trial theme. */
   plate?: PetImageReference | null;
+  /** True when this is a preserve-original-scene mode generation. */
+  preserveOriginalScene?: boolean;
 };
 
 export type SeasonalPolaroidImageGenerationResult = VisualMemoryImageGenerationResult & {
@@ -45,9 +47,22 @@ export async function generateSeasonalPolaroidImage({
   answers,
   primary,
   plate = null,
+  preserveOriginalScene = false,
 }: SeasonalPolaroidImageInput): Promise<SeasonalPolaroidImageGenerationResult> {
   const style = String(answers.themeId ?? "");
   const occasionId = String(answers.occasionId ?? "").trim();
+
+  if (preserveOriginalScene) {
+    const result = await generatePetReferenceImage({
+      openai,
+      references: [primary],
+      prompt: buildPreserveOriginalSceneImagePrompt(answers),
+      size: "1024x1024",
+      logLabel: "seasonal-polaroid-preserve-original",
+    });
+    return { ...result, referenceCount: 1, trialStructure: false };
+  }
+
   const useTrialStructure = Boolean(
     plate
     && isMemberPolaroidArtStyle(style)
@@ -137,6 +152,7 @@ const SAFE_MEMO_VALIDATION_REASONS = new Set([
   "memo_owner_instruction",
   "memo_incomplete",
   "memo_memorial_language",
+  "memo_memorial_physical_presence",
   "memo_korean_caption_quality",
 ]);
 
@@ -157,9 +173,9 @@ function safeMemoValidationReason(error: unknown): string | null {
   return SAFE_MEMO_VALIDATION_REASONS.has(error.reason) ? error.reason : null;
 }
 
-function retryReasonForFailure(code: string): SeasonalPolaroidMemoRetryReason | undefined {
+function retryReasonForFailure(code: string): "memo_line_length" | undefined {
   return code === "memo_line_length" || code === "memo_occasion_relevance" || code === "memo_korean_speech_level" || code === "memo_line_coherence"
-    ? code
+    ? "memo_line_length"
     : undefined;
 }
 
@@ -187,7 +203,7 @@ function parseMemo(
     const petName = answers.petName.trim();
     const lastCodePoint = petName.codePointAt(petName.length - 1) ?? 0;
     const hasBatchim = lastCodePoint >= 0xac00 && lastCodePoint <= 0xd7a3 && (lastCodePoint - 0xac00) % 28 !== 0;
-    const greeting = `${resolvedSeasonalPolaroidMemoCallName(answers, "ko")}, \uB098 ${petName}${hasBatchim ? "\uC544" : "\uC57C"}!`;
+    const greeting = `${resolvedCallName(answers, "ko")}, \uB098 ${petName}${hasBatchim ? "\uC544" : "\uC57C"}!`;
     const repaired = { locale: answers.locale, lines: [greeting, ...parsed.lines.slice(1)] };
     const repairedValidation = validateSeasonalPolaroidMemo(repaired, answers);
     if (repairedValidation.valid) return { memo: repairedValidation.memo, repairCodes: ["memo_korean_greeting"] };

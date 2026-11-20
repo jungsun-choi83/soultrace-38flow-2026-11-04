@@ -340,9 +340,8 @@
         "callNameLabel": "What does your pet call you?",
         "callNameLabelPassed": "What did your pet call you?",
         "callNameCustomPlaceholder": "The name they use for you",
-        "personalLabel": "One personal detail · optional",
-        "personalPlaceholder": "A tiny detail that makes this feel like them",
-        "characterCount": "%COUNT% / 60"
+        "questionAnswerPlaceholder": "Share a thought in your own words",
+        "questionAnswerOptional": "Optional"
       },
       "preview": {
         "label": "LIVE PREVIEW",
@@ -727,7 +726,7 @@
         "steps": {
           "meet": "Meet",
           "scene": "Scene",
-          "personality": "Pet",
+          "questions": "A few questions",
           "preview": "Preview"
         },
         "pageTitle": "A special frame for our child",

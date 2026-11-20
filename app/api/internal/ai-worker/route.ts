@@ -200,6 +200,7 @@ async function processSeasonalPolaroidJob(job: AiGenerationJob): Promise<void> {
   }
   const promptAnswers = validated.answers as SeasonalPolaroidPromptAnswers;
   const openai = new OpenAI({ apiKey });
+  const preserveOriginalScene = String(promptAnswers.generationMode ?? "").trim() === "preserve-original-scene";
 
   // Image first. The caption is written afterwards with the finished photo
   // attached, so the words can match what is actually pictured. A stored
@@ -231,6 +232,7 @@ async function processSeasonalPolaroidJob(job: AiGenerationJob): Promise<void> {
       answers: promptAnswers,
       primary: { bytes: primaryBytes, name: primaryName, type: primaryType },
       plate,
+      preserveOriginalScene,
     });
     if (!imageResult.imageBase64) {
       await requeueSeasonalJob(job, "seasonal_image_failed");
@@ -281,6 +283,7 @@ async function processSeasonalPolaroidJob(job: AiGenerationJob): Promise<void> {
     generation: {
       themeId: validated.answers.themeId,
       occasionId: validated.answers.occasionId || null,
+      ...(preserveOriginalScene ? { generationMode: "preserve-original-scene" as const } : {}),
       imageModel,
       textModel: memoResult.modelUsed,
       generatedAt: new Date().toISOString(),
