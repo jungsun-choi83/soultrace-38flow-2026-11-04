@@ -70,9 +70,16 @@ const nanumPen = Nanum_Pen_Script({
   preload: false,
 });
 
-/** 프로덕션에서 오래된 정적 HTML이 남지 않도록 (Vercel 엣지·프리렌더 갱신) */
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/**
+ * 프로덕션에서 오래된 정적 HTML이 남지 않도록 (Vercel 엣지·프리렌더 갱신)
+ *
+ * Changed from force-dynamic + revalidate=0 to enable ISR (60s cache):
+ * - ISR=60 allows caching for 60s between visits, dramatically improving performance
+ * - Still updates pet data within 60s (acceptable for dashboard/profile pages)
+ * - Reduces server re-computation and storage API calls on repeat visits
+ * - See PERFORMANCE_INVESTIGATION.md for detailed analysis
+ */
+export const revalidate = 60;
 
 const jsonLd = {
   "@context": "https://schema.org",
