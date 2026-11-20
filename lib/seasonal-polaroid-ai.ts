@@ -14,10 +14,9 @@ import {
   buildSeasonalPolaroidMemoMessages,
   buildSeasonalPolaroidMemoVisionMessages,
   fallbackSeasonalPolaroidMemo,
-  resolvedSeasonalPolaroidMemoCallName,
+  resolvedCallName,
   validateSeasonalPolaroidMemo,
   type SeasonalPolaroidMemoImage,
-  type SeasonalPolaroidMemoRetryReason,
   type SeasonalPolaroidPromptAnswers,
 } from "./seasonal-polaroid-prompts.ts";
 import type { SeasonalPolaroidMemo } from "./seasonal-polaroid-contract.ts";
@@ -157,9 +156,9 @@ function safeMemoValidationReason(error: unknown): string | null {
   return SAFE_MEMO_VALIDATION_REASONS.has(error.reason) ? error.reason : null;
 }
 
-function retryReasonForFailure(code: string): SeasonalPolaroidMemoRetryReason | undefined {
+function retryReasonForFailure(code: string): "memo_line_length" | undefined {
   return code === "memo_line_length" || code === "memo_occasion_relevance" || code === "memo_korean_speech_level" || code === "memo_line_coherence"
-    ? code
+    ? "memo_line_length"
     : undefined;
 }
 
@@ -187,7 +186,7 @@ function parseMemo(
     const petName = answers.petName.trim();
     const lastCodePoint = petName.codePointAt(petName.length - 1) ?? 0;
     const hasBatchim = lastCodePoint >= 0xac00 && lastCodePoint <= 0xd7a3 && (lastCodePoint - 0xac00) % 28 !== 0;
-    const greeting = `${resolvedSeasonalPolaroidMemoCallName(answers, "ko")}, \uB098 ${petName}${hasBatchim ? "\uC544" : "\uC57C"}!`;
+    const greeting = `${resolvedCallName(answers, "ko")}, \uB098 ${petName}${hasBatchim ? "\uC544" : "\uC57C"}!`;
     const repaired = { locale: answers.locale, lines: [greeting, ...parsed.lines.slice(1)] };
     const repairedValidation = validateSeasonalPolaroidMemo(repaired, answers);
     if (repairedValidation.valid) return { memo: repairedValidation.memo, repairCodes: ["memo_korean_greeting"] };
